@@ -1,0 +1,1 @@
+Fichiers de mise a jour du launcher SUNRISE. Telecharge la derniere version depuis les Releases.
