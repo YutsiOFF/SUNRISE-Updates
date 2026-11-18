@@ -112,8 +112,6 @@ a { color: inherit; text-decoration: none; }
 .window-bar span:nth-child(1) { background: #c33636; } .window-bar span:nth-child(2) { background: var(--sun); } .window-bar span:nth-child(3) { background: var(--g); }
 .window-bar em { margin-left: 8px; font-style: normal; }
 .window img { border: 3px solid #0f0f10; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04); }
-.mascot { position: absolute; width: 120px; right: -26px; bottom: -48px; image-rendering: pixelated; filter: drop-shadow(0 8px 0 rgba(0,0,0,.4)); animation: bob 2.6s ease-in-out infinite; }
-@keyframes bob { 50% { transform: translateY(-8px); } }
 
 /* ---------- barre XP de transition ---------- */
 .xp { position: relative; height: 70px; background: var(--deep); }
@@ -202,7 +200,7 @@ footer a:hover { color: #fff; border-color: var(--sun); }
 /* apparition au défilement */
 .reveal { opacity: 0; transform: translateY(18px); transition: opacity .5s ease, transform .5s ease; transition-delay: var(--d, 0ms); }
 .reveal.in { opacity: 1; transform: none; }
-@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .xp-fill, .xp-runner, .mascot, .stars { animation: none !important; } }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } .xp-fill, .xp-runner, .stars { animation: none !important; } }
 
 @media (max-width: 980px) {
   .hero .wrap { grid-template-columns: 1fr; }
@@ -219,7 +217,6 @@ footer a:hover { color: #fff; border-color: var(--sun); }
   .features, .steps { grid-template-columns: 1fr; }
   .server { flex-wrap: wrap; }
   .server .btn { margin-left: 0; width: 100%; }
-  .mascot { width: 80px; right: 0; bottom: -40px; }
   .btn { white-space: normal; }
   .btn-big { width: 100%; font-size: 21px; padding: 6px 16px 16px; }
   .btn-big:active { padding: 12px 16px 10px; }
@@ -267,7 +264,6 @@ footer a:hover { color: #fff; border-color: var(--sun); }
     <div class="window reveal" style="--d:200ms">
       <div class="window-bar"><span></span><span></span><span></span><em>SUNRISE Launcher</em></div>
       <img src="assets/shots/home.webp" width="1280" height="800" alt="Écran d'accueil du launcher SUNRISE">
-      <img class="mascot" src="chibi-YUtsi-x16-celebrate.gif" alt="">
     </div>
   </div>
 </header>
@@ -311,7 +307,7 @@ footer a:hover { color: #fff; border-color: var(--sun); }
     </div>
     <div class="gallery reveal" style="--d:120ms">
       <div class="tabs" id="tabs">
-        <button class="tabbtn cur" data-shot="home" data-cap="Accueil : ton skin 3D, la pancarte des news et la barre de jeu (profil · JOUER · compte)."><img src="assets/icons/play.png" alt="">Accueil</button>
+        <button class="tabbtn cur" data-shot="home" data-cap="Accueil : ton skin 3D, les notes de mise à jour et la barre de jeu (profil · JOUER · compte)."><img src="assets/icons/play.png" alt="">Accueil</button>
         <button class="tabbtn" data-shot="mods" data-cap="Mods : la recherche Modrinth intégrée, par catégorie, avec installation dans le profil choisi."><img src="assets/icons/Mod.png" alt="">Mods</button>
         <button class="tabbtn" data-shot="servers" data-cap="Serveurs : mc-copaing, le nombre de joueurs connectés et un bouton pour rejoindre."><img src="assets/icons/serveur.png" alt="">Serveurs</button>
         <button class="tabbtn" data-shot="friends" data-cap="Amis : demandes reçues, statut en ligne et bouton pour rejoindre tes amis."><img src="assets/icons/Friends.png" alt="">Amis</button>
@@ -322,7 +318,7 @@ footer a:hover { color: #fff; border-color: var(--sun); }
       </div>
       <figure class="shot">
         <img id="shot-img" src="assets/shots/home.webp" width="1280" height="800" alt="Capture du launcher SUNRISE">
-        <figcaption id="shot-cap">Accueil : ton skin 3D, la pancarte des news et la barre de jeu (profil · JOUER · compte).</figcaption>
+        <figcaption id="shot-cap">Accueil : ton skin 3D, les notes de mise à jour et la barre de jeu (profil · JOUER · compte).</figcaption>
       </figure>
     </div>
   </div>
