@@ -162,9 +162,11 @@ section { padding: 84px 0; }
 .skin-list img { width: 32px; height: 32px; image-rendering: pixelated; flex: none; }
 .skin-list b { color: #fff; }
 .skin-stage { position: relative; display: grid; place-items: center; min-height: 520px; }
-.skin-stage img { position: relative; width: min(100%, 380px); height: auto; filter: drop-shadow(0 18px 0 rgba(0,0,0,.28)); }
-.skin-sun { position: absolute; width: 360px; height: 360px; top: 50%; left: 50%; transform: translate(-50%, -54%);
-  background: radial-gradient(circle, rgba(255,216,74,.55) 0%, rgba(255,177,46,.25) 38%, rgba(255,140,40,0) 70%); }
+
+.skin-3d { position: relative; width: min(100%, 420px); aspect-ratio: 3 / 4; }
+.skin-3d canvas, .skin-3d .skin-poster { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+.skin-3d canvas { cursor: grab; } .skin-3d canvas:active { cursor: grabbing; }
+.skin-3d.live .skin-poster { display: none; }
 .skin-stage::after { content: ""; position: absolute; bottom: 34px; width: 210px; height: 18px; background: rgba(0,0,0,.35); border-radius: 50%; filter: blur(4px); z-index: -1; }
 .skin-stage figcaption { position: relative; margin-top: 6px; font-size: 13px; color: var(--faint); }
 @media (max-width: 900px) { .skin-grid { grid-template-columns: 1fr; } .skin-stage { min-height: 0; } }
@@ -341,9 +343,10 @@ footer a:hover { color: #fff; border-color: var(--sun); }
       </ul>
     </div>
     <figure class="skin-stage reveal" style="--d:120ms">
-      <div class="skin-sun"></div>
-      <img src="assets/gif/skin-idle.webp" width="409" height="545" alt="Skin Minecraft en 3D qui s'anime dans le launcher SUNRISE">
-      <figcaption>Rendu 3D réel du launcher</figcaption>
+      <div class="skin-3d" id="skin-3d">
+        <img class="skin-poster" src="assets/skin3d/poster.webp" width="480" height="640" alt="Skin Minecraft en 3D qui s'anime dans le launcher SUNRISE">
+      </div>
+      <figcaption>Rendu 3D en direct, comme dans le launcher · fais-le tourner à la souris</figcaption>
     </figure>
   </div>
 </section>
@@ -453,6 +456,37 @@ function firstLine(body, fallback) {
 const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); } }), { threshold: .12 });
 document.querySelectorAll(".reveal").forEach((n) => io.observe(n));
 const xp = el("xp"); new IntersectionObserver((es) => es.forEach((e) => xp.classList.toggle("go", e.isIntersecting))).observe(xp);
+
+/* skin 3D en direct (skinview3d + animations Blockbench, sans la course) */
+(() => {
+  const host = el("skin-3d"); if (!host) return;
+  const load = (src) => new Promise((ok, ko) => { const s = document.createElement("script"); s.src = src; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+  let started = false;
+  const start = async () => {
+    if (started) return; started = true;
+    try {
+      await load("assets/skin3d/skinview3d.bundle.js");
+      await load("assets/skin3d/skin-bbanims.js");
+      await load("assets/skin3d/skin-anim.js");
+      const canvas = document.createElement("canvas"); host.appendChild(canvas);
+      const W = host.clientWidth, H = host.clientHeight;
+      const v = new skinview3d.SkinViewer({ canvas, width: W, height: H });
+      v.background = null; v.fov = 40; v.zoom = 0.66;
+      v.controls.enableZoom = false; v.controls.enablePan = false; v.controls.autoRotate = false;
+      const t = v.controls.target, c = v.camera.position, d = Math.PI / 180;
+      const r = Math.hypot(c.x - t.x, c.y - t.y, c.z - t.z);
+      const az = Math.atan2(c.x - t.x, c.z - t.z) - 35 * d, pol = Math.acos((c.y - t.y) / r) - 8 * d;
+      c.set(t.x + r * Math.sin(pol) * Math.sin(az), t.y + r * Math.cos(pol), t.z + r * Math.sin(pol) * Math.cos(az)); v.controls.update();
+      SunriseAnim.attach(v, { headTrack: false });
+      await v.loadSkin("assets/skin3d/skin.png");
+      host.classList.add("live");
+      new ResizeObserver(() => { if (host.clientWidth) v.setSize(host.clientWidth, host.clientHeight); }).observe(host);
+      /* pause hors écran */
+      new IntersectionObserver((es) => es.forEach((e) => { v.renderPaused = !e.isIntersecting; })).observe(host);
+    } catch (_) { /* pas de WebGL : l'image fixe reste */ }
+  };
+  new IntersectionObserver((es, o) => { if (es.some((e) => e.isIntersecting)) { o.disconnect(); start(); } }, { rootMargin: "300px" }).observe(host);
+})();
 
 /* galerie */
 el("tabs").addEventListener("click", (e) => {
