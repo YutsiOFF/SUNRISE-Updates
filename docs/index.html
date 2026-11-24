@@ -31,7 +31,20 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 70px; }
-body { font-family: var(--font); font-size: 17px; line-height: 1.55; color: #fff; background: var(--deep); overflow-x: hidden; }
+body { position: relative; font-family: var(--font); font-size: 17px; line-height: 1.55; color: #fff; overflow-x: hidden;
+  background: linear-gradient(180deg, #05060f 0%, #0a0f26 14%, #101a3c 30%, #1b1f4d 46%, #2e2355 60%, #55285a 74%, #9b3a4c 86%, #e0672f 95%, #ffb347 100%); }
+/* étoiles en pixels, qui s'effacent quand le soleil se lève */
+body::before { content: ""; position: absolute; inset: 0 0 25% 0; pointer-events: none; z-index: 0;
+  background-image:
+    linear-gradient(#fff,#fff), linear-gradient(#fff,#fff), linear-gradient(#ffd84a,#ffd84a), linear-gradient(#fff,#fff),
+    linear-gradient(#cfd8ff,#cfd8ff), linear-gradient(#fff,#fff), linear-gradient(#fff,#fff), linear-gradient(#ffd84a,#ffd84a);
+  background-size: 3px 3px; background-repeat: no-repeat;
+  background-position: 7% 3%, 23% 9%, 41% 5%, 63% 2%, 81% 7%, 92% 13%, 14% 16%, 55% 14%;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%); mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%); }
+body::after { content: ""; position: absolute; inset: 0 0 30% 0; pointer-events: none; z-index: 0; opacity: .55;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240' shape-rendering='crispEdges'><rect x='18' y='30' width='2' height='2' fill='white'/><rect x='92' y='12' width='2' height='2' fill='white' opacity='.7'/><rect x='150' y='70' width='3' height='3' fill='%23ffd84a' opacity='.8'/><rect x='210' y='40' width='2' height='2' fill='white'/><rect x='60' y='120' width='2' height='2' fill='white' opacity='.6'/><rect x='130' y='160' width='2' height='2' fill='white'/><rect x='200' y='190' width='2' height='2' fill='%23cfd8ff'/><rect x='30' y='210' width='3' height='3' fill='white' opacity='.8'/><rect x='100' y='220' width='2' height='2' fill='white' opacity='.5'/></svg>") repeat;
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 50%, transparent 100%); mask-image: linear-gradient(180deg, #000 0%, #000 50%, transparent 100%); }
+body > * { position: relative; z-index: 1; }
 img { display: block; max-width: 100%; height: auto; }
 a { color: inherit; text-decoration: none; }
 .wrap { width: min(1180px, 92%); margin: 0 auto; }
@@ -84,9 +97,9 @@ a { color: inherit; text-decoration: none; }
 .nav .btn:active { padding: 9px 16px 4px; }
 
 /* ---------- hero ---------- */
-.hero { position: relative; overflow: hidden; padding: 70px 0 90px; background: #050508; }
+.hero { position: relative; overflow: hidden; padding: 70px 0 90px; background: transparent; }
 .hero-bg { position: absolute; inset: 0; background: url("assets/background.webp") right center / cover no-repeat; image-rendering: pixelated; opacity: .95; }
-.hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(5,5,8,.96) 0%, rgba(5,5,8,.75) 40%, rgba(5,5,8,.15) 75%), linear-gradient(0deg, var(--deep) 0%, rgba(22,22,23,0) 30%); }
+.hero-bg::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(5,5,8,.96) 0%, rgba(5,5,8,.75) 40%, rgba(5,5,8,.15) 75%), linear-gradient(0deg, #0a0f26 0%, rgba(10,15,38,0) 35%); }
 .stars { position: absolute; inset: 0; pointer-events: none; background-image:
   radial-gradient(2px 2px at 12% 22%, #fff, transparent), radial-gradient(2px 2px at 28% 64%, #fff8, transparent),
   radial-gradient(2px 2px at 44% 12%, #fff9, transparent), radial-gradient(2px 2px at 8% 82%, #fff7, transparent),
@@ -115,7 +128,7 @@ a { color: inherit; text-decoration: none; }
 .window img { border: 3px solid #0f0f10; box-shadow: 0 30px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04); }
 
 /* ---------- barre XP de transition ---------- */
-.xp { position: relative; height: 70px; background: var(--deep); }
+.xp { position: relative; height: 70px; background: transparent; }
 .xp-track { position: absolute; left: 0; right: 0; bottom: 18px; height: 22px; background: var(--field); border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink); }
 .xp-fill { position: absolute; inset: 3px auto 3px 0; width: 0; background: repeating-linear-gradient(90deg, #6ccf3f 0 14px, #58b330 14px 28px); box-shadow: inset 0 3px 0 #9ef06e, inset 0 -4px 0 #2f7a1a; }
 .xp-runner { position: absolute; bottom: 38px; width: 58px; transform: translateX(-50%); image-rendering: pixelated; }
@@ -137,10 +150,24 @@ section { padding: 84px 0; }
 .feature .body { padding: 16px 18px 20px; color: var(--light); font-size: 16px; }
 .feature .panel-head img { width: 40px; height: 40px; }
 
-.dirt { background: #2a2017 url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='64' shape-rendering='crispEdges'><rect width='64' height='64' fill='%23392a1d'/><rect x='0' y='0' width='8' height='8' fill='%23453424'/><rect x='24' y='8' width='8' height='8' fill='%232d2116'/><rect x='48' y='16' width='8' height='8' fill='%23453424'/><rect x='8' y='32' width='8' height='8' fill='%232d2116'/><rect x='40' y='40' width='8' height='8' fill='%23453424'/><rect x='16' y='56' width='8' height='8' fill='%23453424'/><rect x='56' y='48' width='8' height='8' fill='%232d2116'/><rect x='32' y='24' width='8' height='8' fill='%233f2f20'/></svg>") repeat; background-size: 64px; position: relative; }
-.dirt::before { content: ""; position: absolute; inset: 0; background: rgba(10,8,6,.62); }
-.dirt > * { position: relative; }
-.grass-top { height: 14px; background: repeating-linear-gradient(90deg, #5da535 0 16px, #4c8f2b 16px 32px, #69b83c 32px 40px); box-shadow: inset 0 -4px 0 #3b6e22; }
+.dirt { position: relative; }
+/* les sections « bande » : un voile léger pour les détacher du ciel */
+.band { background: linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.035) 12%, rgba(255,255,255,.035) 88%, rgba(255,255,255,0) 100%); }
+
+
+/* skin animé */
+.skin-grid { display: grid; grid-template-columns: 1.1fr .9fr; gap: 48px; align-items: center; }
+.skin-list { list-style: none; display: grid; gap: 10px; }
+.skin-list li { display: flex; align-items: center; gap: 14px; padding: 10px 14px 8px; color: var(--light); background: rgba(49,50,51,.85); border: 3px solid var(--ink); box-shadow: inset 0 0 0 3px var(--tile-lo); }
+.skin-list img { width: 32px; height: 32px; image-rendering: pixelated; flex: none; }
+.skin-list b { color: #fff; }
+.skin-stage { position: relative; display: grid; place-items: center; min-height: 520px; }
+.skin-stage img { position: relative; width: min(100%, 380px); height: auto; filter: drop-shadow(0 18px 0 rgba(0,0,0,.28)); }
+.skin-sun { position: absolute; width: 360px; height: 360px; top: 50%; left: 50%; transform: translate(-50%, -54%);
+  background: radial-gradient(circle, rgba(255,216,74,.55) 0%, rgba(255,177,46,.25) 38%, rgba(255,140,40,0) 70%); }
+.skin-stage::after { content: ""; position: absolute; bottom: 34px; width: 210px; height: 18px; background: rgba(0,0,0,.35); border-radius: 50%; filter: blur(4px); z-index: -1; }
+.skin-stage figcaption { position: relative; margin-top: 6px; font-size: 13px; color: var(--faint); }
+@media (max-width: 900px) { .skin-grid { grid-template-columns: 1fr; } .skin-stage { min-height: 0; } }
 
 /* captures */
 .gallery { display: grid; grid-template-columns: 250px 1fr; gap: 20px; align-items: start; }
@@ -193,7 +220,7 @@ section { padding: 84px 0; }
 .final .gifs img { height: 92px; image-rendering: pixelated; filter: drop-shadow(0 6px 0 rgba(0,0,0,.45)); }
 .final .gifs img:nth-child(2) { height: 120px; }
 
-footer { padding: 30px 0 40px; background: var(--ink); border-top: 3px solid #0f0f10; box-shadow: inset 0 3px 0 #2a2a2b; color: var(--faint); font-size: 14px; }
+footer { padding: 30px 0 40px; background: rgba(20,12,10,.88); border-top: 3px solid #0f0f10; box-shadow: inset 0 3px 0 #2a2a2b; color: var(--faint); font-size: 14px; }
 footer .wrap { display: flex; flex-wrap: wrap; gap: 14px 30px; align-items: center; justify-content: space-between; }
 footer a { color: var(--light); border-bottom: 2px solid var(--tile); }
 footer a:hover { color: #fff; border-color: var(--sun); }
@@ -233,7 +260,7 @@ footer a:hover { color: #fff; border-color: var(--sun); }
   <div class="wrap">
     <a class="brand" href="#"><img src="assets/icons/sunrise-256.png" alt="">SUNRISE</a>
     <div class="nav-links">
-      <a href="#features">Fonctionnalités</a>
+      <a href="#features">Fonctionnalités</a><a href="#skin">Skin 3D</a>
       <a href="#captures">Captures</a>
       <a href="#serveur">Serveur</a>
       <a href="#versions">Versions</a>
@@ -293,33 +320,55 @@ footer a:hover { color: #fff; border-color: var(--sun); }
       <article class="panel feature reveal" style="--d:80ms"><div class="panel-head"><img src="assets/icons/Friends.png" alt=""><h3>Réseau d'amis</h3></div>
         <div class="body">Ajoute un pseudo, il reçoit ta demande dans son launcher. Vois qui est en ligne et rejoins-le directement.</div></article>
       <article class="panel feature reveal" style="--d:160ms"><div class="panel-head"><img src="assets/icons/SkinCustom.png" alt=""><h3>Skins & capes 3D</h3></div>
-        <div class="body">Ton skin en 3D sur l'accueil, changement de skin classic / slim et capes de ton compte Microsoft en un clic.</div></article>
+        <div class="body">Ton skin en 3D qui bouge vraiment sur l'accueil, changement de skin classic / slim et capes Microsoft en un clic.</div></article>
     </div>
   </div>
 </section>
 
-<div class="grass-top"></div>
-<section id="captures" class="dirt">
+<section id="skin">
+  <div class="wrap skin-grid">
+    <div>
+      <div class="sec-head">
+        <span class="tag reveal">Nouveau · 1.0.20</span>
+        <h2 class="reveal" style="--d:80ms">Ton skin <span>prend vie.</span></h2>
+        <p class="reveal" style="--d:140ms">Sur l'accueil, ton personnage n'est plus une statue : il respire, se balance, se penche et fait de grands gestes, avec des animations faites dans Blockbench. C'est fluide, et un peu goofy.</p>
+      </div>
+      <ul class="skin-list reveal" style="--d:200ms">
+        <li><img src="assets/icons/SkinCustom.png" alt=""><span><b>Animations en continu</b> qui ne se répètent jamais au même moment</span></li>
+        <li><img src="assets/icons/play.png" alt=""><span><b>Il court sur place</b> pendant que Minecraft se lance, cape au vent</span></li>
+        <li><img src="assets/icons/steve_head.png" alt=""><span><b>La tête suit ta souris</b> (désactivable dans les paramètres)</span></li>
+        <li><img src="assets/icons/dandelion.png" alt=""><span><b>Double-clic</b> sur le skin : petit sprint surprise</span></li>
+      </ul>
+    </div>
+    <figure class="skin-stage reveal" style="--d:120ms">
+      <div class="skin-sun"></div>
+      <img src="assets/gif/skin-idle.webp" width="409" height="545" alt="Skin Minecraft en 3D qui s'anime dans le launcher SUNRISE">
+      <figcaption>Rendu 3D réel du launcher</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section id="captures" class="band">
   <div class="wrap">
     <div class="sec-head">
       <span class="tag reveal">Captures</span>
-      <h2 class="reveal" style="--d:80ms">Le nouveau look <span>1.0.12</span></h2>
-      <p class="reveal" style="--d:140ms">Clique sur un onglet pour visiter le launcher.</p>
+      <h2 class="reveal" style="--d:80ms">Le launcher <span>en images</span></h2>
+      <p class="reveal" style="--d:140ms">Clique sur un onglet pour visiter chaque page, telle que tu la verras.</p>
     </div>
     <div class="gallery reveal" style="--d:120ms">
       <div class="tabs" id="tabs">
-        <button class="tabbtn cur" data-shot="home" data-cap="Accueil : ton skin 3D, les notes de mise à jour et la barre de jeu (profil · JOUER · compte)."><img src="assets/icons/play.png" alt="">Accueil</button>
+        <button class="tabbtn cur" data-shot="home" data-cap="Accueil : ton skin et ta cape en 3D, animés en continu, et la barre de jeu (profil · JOUER · compte)."><img src="assets/icons/play.png" alt="">Accueil</button>
         <button class="tabbtn" data-shot="mods" data-cap="Mods : la recherche Modrinth intégrée, par catégorie, avec installation dans le profil choisi."><img src="assets/icons/Mod.png" alt="">Mods</button>
         <button class="tabbtn" data-shot="servers" data-cap="Serveurs : mc-copaing, le nombre de joueurs connectés et un bouton pour rejoindre."><img src="assets/icons/serveur.png" alt="">Serveurs</button>
-        <button class="tabbtn" data-shot="friends" data-cap="Amis : demandes reçues, statut en ligne et bouton pour rejoindre tes amis."><img src="assets/icons/Friends.png" alt="">Amis</button>
-        <button class="tabbtn" data-shot="custom" data-cap="Skins : aperçu 3D, modèle classic / slim et capes de ton compte."><img src="assets/icons/SkinCustom.png" alt="">Skins</button>
+        <button class="tabbtn" data-shot="friends" data-cap="Amis : demandes reçues, qui est en ligne sur mc-copaing, et un bouton pour les rejoindre."><img src="assets/icons/Friends.png" alt="">Amis</button>
+        <button class="tabbtn" data-shot="custom" data-cap="Skins & capes : aperçu 3D, modèle classic / slim et capes de ton compte Microsoft."><img src="assets/icons/SkinCustom.png" alt="">Skins</button>
         <button class="tabbtn" data-shot="instances" data-cap="Profils : nom, version, mod-loader et icône de bloc."><img src="assets/icons/chest.png" alt="">Profils</button>
-        <button class="tabbtn" data-shot="home-loading" data-cap="Lancement : la barre d'XP se remplit pendant que Steve court."><img src="assets/icons/grass_block.png" alt="">Lancement</button>
+        <button class="tabbtn" data-shot="home-loading" data-cap="Lancement : la barre d'XP se remplit pendant que ton perso court sur place."><img src="assets/icons/grass_block.png" alt="">Lancement</button>
         <button class="tabbtn" data-shot="gate" data-cap="Connexion : pseudo hors-ligne ou compte Microsoft."><img src="assets/icons/steve_head.png" alt="">Connexion</button>
       </div>
       <figure class="shot">
         <img id="shot-img" src="assets/shots/home.webp" width="1280" height="800" alt="Capture du launcher SUNRISE">
-        <figcaption id="shot-cap">Accueil : ton skin 3D, les notes de mise à jour et la barre de jeu (profil · JOUER · compte).</figcaption>
+        <figcaption id="shot-cap">Accueil : ton skin et ta cape en 3D, animés en continu, et la barre de jeu (profil · JOUER · compte).</figcaption>
       </figure>
     </div>
   </div>
@@ -339,8 +388,7 @@ footer a:hover { color: #fff; border-color: var(--sun); }
   </div>
 </section>
 
-<div class="grass-top"></div>
-<section id="serveur" class="dirt">
+<section id="serveur" class="band">
   <div class="wrap">
     <div class="sec-head">
       <span class="tag reveal">Multijoueur</span>
@@ -370,7 +418,7 @@ footer a:hover { color: #fff; border-color: var(--sun); }
   </div>
 </section>
 
-<section class="final dirt">
+<section class="final">
   <div class="wrap">
     <div class="gifs reveal">
       <img src="assets/gif/chibi-Hyska94-x16-blockwalk.gif" alt="">
