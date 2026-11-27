@@ -802,14 +802,36 @@
   ];
   const ALL_COSM = [...SUNRISE_COSMETICS, ...MCR_COSMETICS];
   const COSMETICS = ALL_COSM.map((d) => d.meta);   /* métadonnées (id, nom, catégorie…) */
+  /* rangement : chaque cosmétique (SUNRISE ou LabyMod) va dans UNE catégorie claire */
   const COSM_GROUPS = [
-    { id: "all", name: "Tout", cats: [] },
-    { id: "head", name: "Tête", cats: ["HAT", "HEADGEAR", "FACE"] },
-    { id: "body", name: "Corps", cats: ["BACK", "LANYARD", "TAIL", "AURA"] },
-    { id: "wings", name: "Ailes", cats: ["WING"] },
-    { id: "feet", name: "Pieds", cats: ["FEET"] },
-    { id: "pets", name: "Compagnons", cats: ["PETS"] },
+    { id: "hats", name: "Chapeaux" },
+    { id: "head", name: "Tête & visage" },
+    { id: "wings", name: "Ailes" },
+    { id: "back", name: "Capes & dos" },
+    { id: "body", name: "Corps" },
+    { id: "feet", name: "Chaussures" },
+    { id: "auras", name: "Auras" },
+    { id: "pets", name: "Compagnons" },
   ];
+  function groupOf(m) {
+    const c = String(m?.category || "").toUpperCase(), p = String(m?.position || "").toUpperCase(), a = String(m?.attachedTo || "").toUpperCase();
+    if (/PET/.test(m?.type || "") || c === "PETS" || c === "PARTNER") return "pets";
+    if (c === "HAT") return "hats";
+    if (c === "HEADGEAR" || c === "HEAD" || c === "FACE") return "head";
+    if (c === "WING") return "wings";
+    if (c === "CLOAK" || c === "BACK" || c === "TAIL") return "back";
+    if (c === "AURA" || c === "UNDERGLOW") return "auras";
+    if (c === "SHOES" || c === "FEET") return "feet";
+    if (c === "BODY" || c === "ARMS" || c === "LANYARD") return "body";
+    /* catégorie absente : on se fie à la position */
+    if (p === "HEAD_TOP") return "hats";
+    if (p === "FACE" || a === "HEAD") return "head";
+    if (p === "FEET" || p === "LEGS_BACK" || a === "LEG") return "feet";
+    if (p === "BACK") return "back";
+    if (p === "SHOULDER") return "pets";
+    return "body";
+  }
+
   const geoCacheC = new Map();
   function cosmItem(id) {
     const def = ALL_COSM.find((d) => d.meta.id === id);
@@ -820,6 +842,22 @@
   }
   /* anciens identifiants (versions précédentes) */
   const COSM_ALIASES = { tophat: "b_sunrise_tophat", sunrise_tophat: "b_sunrise_tophat" };
+
+  /* ---------- animateur des cosmétiques : textures animées + ailes, queues, compagnons ---------- */
+  const CosmAnim = (() => {
+    const list = new Set();
+    let raf = 0;
+    function loop(t) {
+      raf = requestAnimationFrame(loop);
+      for (const a of list) {
+        if (!a.obj.parent) { list.delete(a); continue; }
+        try { a.fn(t / 1000); } catch (_) { list.delete(a); }
+      }
+      if (!list.size) { cancelAnimationFrame(raf); raf = 0; }
+    }
+    function add(obj, fn) { list.add({ obj, fn }); if (!raf) raf = requestAnimationFrame(loop); }
+    return { add };
+  })();
 
   /* ---------- LabyMod : géométrie Bedrock → objets 3D (portage de MC-RENDER) ---------- */
   const Laby = (() => {
@@ -874,12 +912,18 @@
       }
       if (!geo) throw new Error("géométrie introuvable");
       const tw = geo.description?.texture_width ?? 64, th = geo.description?.texture_height ?? 64;
-      let tex = null;
+      let tex = null, frames = 1, frameH = 0, frameCanvas = null, sheet = null;
       if (item.texture) {
         const img = await loadImg(item.texture);
-        const c = document.createElement("canvas"); c.width = img.width; c.height = Math.min(img.height, img.width * th / tw || img.height);
-        c.getContext("2d").drawImage(img, 0, 0);
-        tex = new K.Tex(c);
+        /* hauteur d'une image : frame_aspect_ratio de LabyMod, sinon proportions de la géométrie */
+        const fr = item.frameRatio;
+        frameH = fr && fr.width > 0 ? Math.round(img.width * fr.height / fr.width) : Math.round(img.width * th / tw) || img.height;
+        if (!frameH || frameH > img.height) frameH = img.height;
+        frames = Math.max(1, Math.floor(img.height / frameH));
+        frameCanvas = document.createElement("canvas"); frameCanvas.width = img.width; frameCanvas.height = frameH;
+        frameCanvas.getContext("2d").drawImage(img, 0, 0, img.width, frameH, 0, 0, img.width, frameH);
+        sheet = img;
+        tex = new K.Tex(frameCanvas);
         tex.magFilter = K.map.magFilter; tex.minFilter = K.map.minFilter; tex.generateMipmaps = false;
         tex.flipY = K.map.flipY; tex.colorSpace = K.map.colorSpace; tex.needsUpdate = true;
       }
@@ -900,7 +944,15 @@
           const rot = c.rotation ? [-c.rotation[0], -c.rotation[1], c.rotation[2]] : [0, 0, 0];
           let faces;
           if (Array.isArray(c.uv)) faces = boxUV(c.uv[0], c.uv[1], size, c.mirror ?? b.mirror);
-          else if (c.uv && typeof c.uv === "object") { faces = {}; for (const [dir, fd] of Object.entries(c.uv)) { const [u, vv] = fd.uv, [sw, sh] = fd.uv_size || [0, 0]; faces[dir] = [u, vv, u + sw, vv + sh]; } }
+          else if (c.uv && typeof c.uv === "object") {
+            faces = {};
+            for (const [dir, fd] of Object.entries(c.uv)) {
+              if (!fd?.uv) continue;
+              const [u, vv] = fd.uv, [sw, sh] = fd.uv_size || [0, 0];
+              /* format Bedrock : les faces du dessus/dessous sont retournées (même règle que Blockbench) */
+              faces[dir] = dir === "up" || dir === "down" ? [u + sw, vv + sh, u, vv] : [u, vv, u + sw, vv + sh];
+            }
+          }
           else faces = boxUV(0, 0, size, false);
           const f = [from[0] - piv[0] - inf, from[1] - piv[1] - inf, from[2] - piv[2] - inf];
           const t = [to[0] - piv[0] + inf, to[1] - piv[1] + inf, to[2] - piv[2] + inf];
@@ -950,6 +1002,38 @@
       const root = new K.Obj();
       root.name = "laby-" + item.id;
       root.add(turn);
+      /* texture animée (images empilées verticalement) */
+      if (frames > 1 && frameCanvas && sheet) {
+        const delay = Math.max(40, item.frameDelay || 100) / 1000, g2 = frameCanvas.getContext("2d");
+        let last = -1;
+        CosmAnim.add(root, (t) => {
+          const f = Math.floor(t / delay) % frames;
+          if (f === last) return;
+          last = f;
+          g2.clearRect(0, 0, frameCanvas.width, frameH);
+          g2.drawImage(sheet, 0, f * frameH, sheet.width, frameH, 0, 0, sheet.width, frameH);
+          tex.needsUpdate = true;
+        });
+      }
+      /* mouvements : ailes qui battent, queues qui balancent, compagnons qui flottent */
+      const wings = [...groups.values()].filter((g) => /wing/i.test(g.name) && !/^glow/i.test(g.name));
+      const tails = [...groups.values()].filter((g) => /tail|queue/i.test(g.name));
+      const isPet = /PET/.test(item.type || "") || item.category === "PETS";
+      if (wings.length || tails.length || isPet) {
+        for (const g of [...wings, ...tails]) g.userData.r0 = g.rotation.clone();
+        const y0 = root.position.y, seed = Math.random() * 6;
+        CosmAnim.add(root, (t) => {
+          const k = Math.sin(t * 2.2 + seed);
+          for (const g of wings) {
+            const nm = g.name.toLowerCase();
+            const side = /left|gauche|(^|_)l(_|$)/.test(nm) ? -1 : /right|droit|(^|_)r(_|$)/.test(nm) ? 1 : (g.position.x >= 0 ? -1 : 1);
+            g.rotation.y = g.userData.r0.y + side * 0.18 * k;
+          }
+          for (const g of tails) { g.rotation.y = g.userData.r0.y + 0.22 * Math.sin(t * 1.6 + seed); }
+          if (isPet) turn.position.y = 0.8 * Math.sin(t * 1.8 + seed);
+        });
+        void y0;
+      }
       return root;
     }
     function joints(v, item) {
@@ -958,21 +1042,28 @@
       if (item.type === "FLYING_PET") return [[s.body, [11, 12, 2]]];
       switch (item.attachedTo) {
         case "HEAD": return [[s.head, [0, 0, 0]]];
-        case "ARM": return /glove|hand|gant/i.test(item.name) && item.category === "ARMS" ? [[s.rightArm, [0, 2, 0]], [s.leftArm, [0, 2, 0]]] : [[s.rightArm, [0, 2, 0]]];
-        case "LEG": case "FEET": return [[s.rightLeg, [0, 0, 0]], [s.leftLeg, [0, 0, 0]]];
+        case "ARM": return item.mirror || (/glove|hand|gant/i.test(item.name) && item.category === "ARMS") ? [[s.rightArm, [0, 2, 0]], [s.leftArm, [0, 2, 0], true]] : [[s.rightArm, [0, 2, 0]]];
+        case "LEG": case "FEET":
+          /* LabyMod : « mirror » = une pièce par jambe, la gauche en miroir */
+          return item.mirror === false ? [[s.rightLeg, [0, 0, 0]]] : [[s.rightLeg, [0, 0, 0]], [s.leftLeg, [0, 0, 0], true]];
         default: return [[s.body, [0, 6, 0]]];
       }
     }
     async function attachAll(v, items, key = "__labyObjs") {
       const gen = (v[key + "Gen"] = (v[key + "Gen"] || 0) + 1);
+      /* une cape LabyMod remplace la cape Minecraft */
+      v.__hideCape = v.__hideCape || {};
+      v.__hideCape[key] = items.some((it) => it.hideCape || it.category === "CLOAK");
+      if (v.playerObject?.cape) v.playerObject.cape.visible = !v.__noCape && !Object.values(v.__hideCape).some(Boolean);
       for (const o of v[key] || []) o.parent?.remove(o);
       v[key] = [];
       for (const it of items) {
-        for (const [joint, off] of joints(v, it)) {
+        for (const [joint, off, mirrored] of joints(v, it)) {
           try {
             const obj = await build(v, it);
             if (v[key + "Gen"] !== gen) return;       /* une mise à jour plus récente a pris le relais */
             obj.position.set(off[0], off[1], off[2]);
+            if (mirrored) obj.scale.x = -1;
             joint.add(obj);
             v[key].push(obj);
           } catch (e) { console.warn("cosmétique", it.name, e); }
@@ -980,6 +1071,36 @@
       }
     }
     return { attachAll };
+  })();
+
+  /* catalogue public LabyMod : tous les cosmétiques, chargés à la demande */
+  const LabyCatalog = (() => {
+    let metas = null, pending = null, error = "";
+    const items = new Map();
+    function load() {
+      if (metas) return Promise.resolve(metas);
+      if (pending) return pending;
+      const A = api();
+      if (!A?.labyCatalog) { metas = []; return Promise.resolve(metas); }
+      pending = A.labyCatalog().then((r) => {
+        if (!r?.ok) { error = r?.error || "Catalogue LabyMod indisponible."; metas = []; return metas; }
+        error = "";
+        metas = (r.items || []).filter((m) => m && m.id);
+        return metas;
+      }).catch((e) => { error = e?.message || "Catalogue LabyMod indisponible."; metas = []; return metas; })
+        .finally(() => { pending = null; });
+      return pending;
+    }
+    function item(id) {
+      if (items.has(id)) return Promise.resolve(items.get(id));
+      const A = api();
+      if (!A?.labyItem) return Promise.resolve(null);
+      return A.labyItem(id)
+        .then((r) => { const it = r?.ok ? r.item : null; if (it) items.set(id, it); return it; })
+        .catch(() => null);
+    }
+    const meta = (id) => (metas || []).find((m) => m.id === id) || null;
+    return { load, item, meta, get metas() { return metas; }, get error() { return error; } };
   })();
 
   const Cosmetics = (() => {
@@ -1004,13 +1125,42 @@
       document.body?.classList.toggle("cosm-head", hasHat(equipped));
     }
     let labyItems = [], labyOn = (() => { try { return localStorage.getItem("sunrise-laby-cosm") !== "0"; } catch { return true; } })();
+    /* cosmétiques LabyMod choisis dans le launcher (catalogue public, sans compte LabyMod) */
+    const LKEY = "sunrise-laby-equipped";
+    let labyEquipped = (() => { try { return JSON.parse(localStorage.getItem(LKEY) || "[]").map(String); } catch { return []; } })();
+    async function applyLabyEquip(v) {
+      if (!v?.playerObject || v.__cosmOverride) return;
+      const gen = (v.__labyCatGen = (v.__labyCatGen || 0) + 1);
+      const items = [];
+      for (const id of labyEquipped) { const it = await LabyCatalog.item(id); if (it) items.push(it); }
+      if (v.__labyCatGen !== gen) return;      /* une mise à jour plus récente a pris le relais */
+      if (v.__z0 === undefined) v.__z0 = v.zoom;
+      const hat = labyEquipped.some((id) => headCats.includes(LabyCatalog.meta(id)?.category));
+      const base = (v.__cosmOverride || equipped).map((id) => COSM_ALIASES[id] || id);
+      v.zoom = hat || hasHat(base) ? v.__z0 * 0.86 : v.__z0;
+      Laby.attachAll(v, items, "__labyCatObjs");
+    }
+    function refreshLabyEquip() { for (const v of viewers) if (!v.__cosmOverride) applyLabyEquip(v); }
+    function toggleLaby(id) {
+      if (!id) return;
+      if (labyEquipped.includes(id)) labyEquipped = labyEquipped.filter((x) => x !== id);
+      else {
+        const cat = LabyCatalog.meta(id)?.category || "";
+        labyEquipped = [...(cat ? labyEquipped.filter((x) => LabyCatalog.meta(x)?.category !== cat) : labyEquipped), id];
+      }
+      try { localStorage.setItem(LKEY, JSON.stringify(labyEquipped)); } catch (_) {}
+      /* un choix local remplace les cosmétiques portés sur le compte LabyMod */
+      if (labyEquipped.length) for (const v of viewers) { for (const o of v.__labyObjs || []) o.parent?.remove(o); v.__labyObjs = []; }
+      else for (const v of viewers) if (!v.__cosmOverride) Laby.attachAll(v, labyOn ? labyItems : []);
+      refreshLabyEquip();
+    }
     async function loadLaby() {
       const A = api();
       const uuid = typeof session !== "undefined" && session?.type === "msa" ? session.uuid : null;
       if (!A?.labyWorn || !uuid) { labyItems = []; return { ok: false, reason: "msa" }; }
       const r = await A.labyWorn(uuid);
       labyItems = r?.ok ? r.items : [];
-      for (const v of viewers) if (!v.__cosmOverride) Laby.attachAll(v, labyOn ? labyItems : []);
+      for (const v of viewers) if (!v.__cosmOverride) { if (labyEquipped.length) applyLabyEquip(v); else Laby.attachAll(v, labyOn ? labyItems : []); }
       return r;
     }
     function setLabyOn(on) {
@@ -1022,7 +1172,10 @@
       if (!v) return;
       viewers.add(v);
       refresh(v);
-      if (!v.__cosmOverride && labyOn && labyItems.length) Laby.attachAll(v, labyItems);
+      if (!v.__cosmOverride) {
+        if (labyEquipped.length) applyLabyEquip(v);
+        else if (labyOn && labyItems.length) Laby.attachAll(v, labyItems);
+      }
       document.body?.classList.toggle("cosm-head", hasHat(equipped));
     }
     function set(list) {
@@ -1048,7 +1201,7 @@
         });
       } catch (_) { /* hors ligne : pas bloquant */ }
     }
-    return { attach, refresh, refreshAll, toggle, set, publish, loadLaby, setLabyOn, get equipped() { return [...equipped]; }, get laby() { return labyItems; }, get labyOn() { return labyOn; } };
+    return { attach, refresh, refreshAll, toggle, set, publish, loadLaby, setLabyOn, toggleLaby, refreshLabyEquip, get equipped() { return [...equipped]; }, get laby() { return labyItems; }, get labyOn() { return labyOn; }, get labyEquipped() { return [...labyEquipped]; } };
   })();
 
   /* vignettes 3D des cosmétiques : un petit viewer hors écran, rendu une fois par cosmétique */
@@ -1063,40 +1216,56 @@
       v.background = null; v.fov = 30; v.renderPaused = true;
       if (v.controls) v.controls.enabled = false;
       v.playerObject.cape.visible = false;
+      v.__noCape = true;
       ready = v.loadSkin(typeof MODE !== "undefined" && MODE.skin ? MODE.skin : "steve.png").catch(() => v.loadSkin("steve.png")).catch(() => {});
       return ready;
     }
-    async function render(id) {
+    async function renderItem(item) {
       await init();
-      const item = cosmItem(id);
-      v.__cosmOverride = [id];
+      v.__cosmOverride = [item.id];
       await Laby.attachAll(v, [item], "__cosmObjs");
-      const cat = item.category, s = v.playerObject.skin;
-      const head = ["HAT", "HEADGEAR", "FACE"].includes(cat), feet = cat === "FEET";
-      const ty = head ? 17 : feet ? -2 : 3, dist = head ? 40 : feet ? 34 : 64;
-      const back = ["WING", "BACK", "TAIL"].includes(cat);
-      const yaw = back ? Math.PI + 0.6 : -0.6;
+      const s = v.playerObject.skin, gid = groupOf(item);
+      /* cadrage : chaussures → jambes, ailes/capes → dos, chapeaux → tête… */
+      /* repère : tête de 0 à 8, corps de -12 à 0, jambes de -24 à -12 */
+      const F = {
+        hats: [9, 38, -0.6, 6], head: [5, 30, -0.55, 3], feet: [-21, 24, -0.6, 8],
+        wings: [-4, 66, Math.PI + 0.55, 6], back: [-6, 50, Math.PI + 0.55, 4],
+        body: [-5, 40, -0.55, 3], auras: [-7, 78, -0.6, 6], pets: [-2, 76, -0.7, 8],
+      }[gid] || [-6, 64, -0.6, 6];
+      s.position.y = 0;
+      const [ty, dist, yaw, up] = F;
       v.controls.target.set(0, ty, 0);
-      v.camera.position.set(Math.sin(yaw) * dist, ty + 6, Math.cos(yaw) * dist);
+      v.camera.position.set(Math.sin(yaw) * dist, ty + up, Math.cos(yaw) * dist);
       v.camera.lookAt(0, ty, 0);
       s.position.y = 0;
       v.render();
       return v.canvas.toDataURL("image/png");
     }
     function get(id) {
-      if (cache.has(id)) return Promise.resolve(cache.get(id));
-      return new Promise((ok) => { queue.push([id, ok]); pump(); });
+      return once("cosm:" + id, () => { const item = cosmItem(id); if (!item) throw new Error("Cosmétique inconnu"); return renderItem(item); });
+    }
+    /* vignette d'un cosmétique LabyMod (catalogue public) */
+    function getLaby(id) {
+      return once("laby:" + id, async () => {
+        const item = await LabyCatalog.item(id);
+        if (!item) throw new Error("Cosmétique LabyMod indisponible");
+        return renderItem(item);
+      });
+    }
+    function once(key, fn) {
+      if (cache.has(key)) return Promise.resolve(cache.get(key));
+      return new Promise((ok) => { queue.push([key, fn, ok]); pump(); });
     }
     async function pump() {
       if (busy) return;
       busy = true;
       while (queue.length) {
-        const [id, ok] = queue.shift();
-        try { const url = cache.get(id) || await render(id); cache.set(id, url); ok(url); } catch { ok(null); }
+        const [key, fn, ok] = queue.shift();
+        try { const url = cache.get(key) || await fn(); cache.set(key, url); ok(url); } catch { ok(null); }
       }
       busy = false;
     }
-    return { get };
+    return { get, getLaby };
   })();
 
 
@@ -1480,57 +1649,101 @@
      7. PAGE COSMÉTIQUES
      ================================================================ */
   const CosmPage = (() => {
-    let viewer = null, labyState = "idle", labyErr = "", group = "all";
+    let viewer = null, group = "hats", query = "", io = null, token = 0;
+    const CAT_FR = { hats: "Chapeau", head: "Tête", wings: "Ailes", back: "Dos", body: "Corps", feet: "Chaussures", auras: "Aura", pets: "Compagnon" };
     function init() {
       const host = $("cosm-skin");
       if (host && !viewer && host.clientWidth) viewer = makeViewer(host, { yaw: -32, zoom: 0.62 });
       if (viewer && typeof MODE !== "undefined" && MODE.skin && viewer.__skin !== MODE.skin) { viewer.loadSkin(MODE.skin).catch(() => {}); viewer.__skin = MODE.skin; }
       if (viewer && typeof MODE !== "undefined" && MODE.cape && viewer.__cape !== MODE.cape) { viewer.loadCape(MODE.cape).catch(() => {}); viewer.__cape = MODE.cape; }
-      if (isMsa() && labyState === "idle") {
-        labyState = "loading";
-        Cosmetics.loadLaby().then((r) => { labyState = "done"; labyErr = r && !r.ok && r.error ? r.error : ""; render(); }).catch(() => { labyState = "done"; render(); });
-      }
       const tabs = $("cosm-tabs");
       if (tabs && !tabs.dataset.ready) {
         tabs.dataset.ready = "1";
-        tabs.innerHTML = COSM_GROUPS.map((g) => `<button type="button" class="mod-tab${g.id === group ? " cur" : ""}" data-g="${g.id}">${esc(g.name)}</button>`).join("");
-        tabs.addEventListener("click", (e) => { const b = e.target.closest("[data-g]"); if (!b) return; group = b.dataset.g; tabs.querySelectorAll("button").forEach((x) => x.classList.toggle("cur", x === b)); render(); });
+        tabs.innerHTML = COSM_GROUPS.map((g) => `<button type="button" class="mod-tab${g.id === group ? " cur" : ""}" data-g="${g.id}">${esc(g.name)}</button>`).join("")
+          + `<input type="text" class="inst-input cosm-search" id="cosm-search" placeholder="Chercher…" spellcheck="false">`;
+        tabs.addEventListener("click", (e) => {
+          const b = e.target.closest("[data-g]"); if (!b) return;
+          group = b.dataset.g; query = ""; $("cosm-search").value = "";
+          tabs.querySelectorAll("button").forEach((x) => x.classList.toggle("cur", x === b));
+          render();
+        });
+        $("cosm-search").addEventListener("input", (e) => { query = e.target.value.trim().toLowerCase(); render(); });
       }
       render();
+      LabyCatalog.load().then(() => render());
+    }
+    /* un seul cosmétique par catégorie, toutes sources confondues */
+    function wear(entry) {
+      const g = entry.group;
+      if (entry.src === "sunrise") {
+        const on = Cosmetics.equipped.includes(entry.id);
+        if (!on) for (const id of Cosmetics.labyEquipped) if (groupOf(LabyCatalog.meta(id)) === g) Cosmetics.toggleLaby(id);
+        if (!on) Cosmetics.set([...Cosmetics.equipped.filter((id) => groupOf(COSMETICS.find((d) => d.id === id)) !== g), entry.id]);
+        else Cosmetics.set(Cosmetics.equipped.filter((id) => id !== entry.id));
+      } else {
+        const on = Cosmetics.labyEquipped.includes(entry.id);
+        if (!on) {
+          Cosmetics.set(Cosmetics.equipped.filter((id) => groupOf(COSMETICS.find((d) => d.id === id)) !== g));
+          for (const id of Cosmetics.labyEquipped) if (id !== entry.id && groupOf(LabyCatalog.meta(id)) === g) Cosmetics.toggleLaby(id);
+        }
+        Cosmetics.toggleLaby(entry.id);
+      }
+      sync();
+    }
+    function isOn(e) { return e.src === "sunrise" ? Cosmetics.equipped.includes(e.id) : Cosmetics.labyEquipped.includes(e.id); }
+    function entries() {
+      const out = COSMETICS.map((d) => ({ src: "sunrise", id: d.id, name: d.name, group: groupOf(d) }));
+      for (const m of LabyCatalog.metas || []) out.push({ src: "laby", id: m.id, name: m.name, group: groupOf(m) });
+      return out;
+    }
+    function sync() {
+      for (const el of document.querySelectorAll("#cosm-grid .cosm-card")) {
+        const on = isOn(el._entry);
+        el.classList.toggle("on", on);
+        const b = el.querySelector("button");
+        b.textContent = on ? "Retirer" : "Porter";
+        b.className = on ? "btn-secondary" : "btn-primary";
+      }
     }
     function render() {
       const grid = $("cosm-grid");
       if (!grid) return;
-      const eq = Cosmetics.equipped;
-      const g = COSM_GROUPS.find((x) => x.id === group);
-      const list = COSMETICS.filter((d) => !g.cats.length || g.cats.includes(d.category));
+      const my = ++token;
+      io?.disconnect();
       grid.innerHTML = "";
-      for (const d of list) {
-        const on = eq.includes(d.id);
-        const el = document.createElement("div");
-        el.className = "cosm-card" + (on ? " on" : "");
-        el.innerHTML = `<div class="cosm-thumb"><i class="lib-spin"></i></div>
-          <div class="cosm-info"><b>${esc(d.name)}</b><em>${esc(CAT_FR[d.category] || "Cosmétique")}</em></div>
-          <button type="button" class="${on ? "btn-secondary" : "btn-primary"}">${on ? "Retirer" : "Porter"}</button>`;
-        el.querySelector("button").addEventListener("click", () => { Cosmetics.toggle(d.id); render(); });
-        CosmThumbs.get(d.id).then((url) => { const t = el.querySelector(".cosm-thumb"); if (url && t) t.innerHTML = `<img src="${url}" alt="">`; });
-        grid.appendChild(el);
+      let list = entries();
+      list = query ? list.filter((e) => e.name.toLowerCase().includes(query)) : list.filter((e) => e.group === group);
+      /* SUNRISE d'abord, puis ordre alphabétique */
+      list.sort((a, b) => (a.src === b.src ? a.name.localeCompare(b.name, "fr") : a.src === "sunrise" ? -1 : 1));
+      if (!list.length) {
+        grid.innerHTML = `<p class="auth-note cosm-empty">${LabyCatalog.metas === null ? "Chargement du catalogue…" : query ? "Aucun cosmétique trouvé." : "Rien dans cette catégorie pour le moment."}</p>`;
+        return;
       }
-      /* cosmétiques LabyMod que tu possèdes */
-      const lab = document.createElement("div");
-      lab.className = "cosm-laby";
-      const items = Cosmetics.laby;
-      if (!isMsa()) lab.innerHTML = `<h3>Tes cosmétiques LabyMod</h3><p class="auth-note">Connecte-toi avec ton compte Microsoft pour afficher les cosmétiques LabyMod que tu possèdes.</p>`;
-      else if (labyState === "loading") lab.innerHTML = `<h3>Tes cosmétiques LabyMod</h3><p class="auth-note">Recherche de tes cosmétiques LabyMod…</p>`;
-      else if (!items.length) lab.innerHTML = `<h3>Tes cosmétiques LabyMod</h3><p class="auth-note">${esc(labyErr || "Ton compte ne porte aucun cosmétique LabyMod.")}</p>`;
-      else lab.innerHTML = `<div class="cosm-laby-head"><h3>Tes cosmétiques LabyMod <em>${items.length}</em></h3>
-          <label class="setting-pin"><span>Les afficher</span><input type="checkbox" class="pixel-chk" id="laby-on"${Cosmetics.labyOn ? " checked" : ""}></label></div>
-          <div class="cosm-laby-list">${items.map((it) => `<span class="cosm-chip">${esc(it.name)}</span>`).join("")}</div>
-          <p class="auth-note">Ceux que tu possèdes sur ton compte LabyMod, affichés sur ton skin dans le launcher.</p>`;
-      grid.prepend(lab);
-      lab.querySelector("#laby-on")?.addEventListener("change", (e) => Cosmetics.setLabyOn(e.target.checked));
+      io = new IntersectionObserver((en) => {
+        for (const e of en) {
+          if (!e.isIntersecting) continue;
+          io.unobserve(e.target);
+          const el = e.target, it = el._entry;
+          (it.src === "sunrise" ? CosmThumbs.get(it.id) : CosmThumbs.getLaby(it.id)).then((url) => {
+            if (my !== token) return;
+            const t = el.querySelector(".cosm-thumb");
+            if (t) t.innerHTML = url ? `<img src="${url}" alt="">` : `<span class="laby-fallback">${esc(CAT_FR[it.group] || "")}</span>`;
+          });
+        }
+      }, { root: grid, rootMargin: "200px" });
+      for (const e of list) {
+        const el = document.createElement("div");
+        el._entry = e;
+        el.className = "cosm-card";
+        el.innerHTML = `<div class="cosm-thumb"><i class="lib-spin"></i></div>
+          <div class="cosm-info"><b>${esc(e.name)}</b><em>${esc(CAT_FR[e.group] || "Cosmétique")}${e.src === "sunrise" ? " · SUNRISE" : ""}</em></div>
+          <button type="button" class="btn-primary">Porter</button>`;
+        el.querySelector("button").addEventListener("click", () => wear(e));
+        grid.appendChild(el);
+        io.observe(el);
+      }
+      sync();
     }
-    const CAT_FR = { HAT: "Chapeau", HEADGEAR: "Tête", FACE: "Visage", WING: "Ailes", BACK: "Dos", LANYARD: "Cou", TAIL: "Queue", AURA: "Aura", FEET: "Pieds", PETS: "Compagnon" };
     return { init };
   })();
 
