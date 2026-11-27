@@ -62,7 +62,47 @@
       return g.getImageData(54, 20, 1, 1).data[3] === 0 && g.getImageData(55, 31, 1, 1).data[3] === 0;
     } catch { return false; }
   }
+  /* vrai skin complet ? (MineSkin mélange des textures de têtes : corps vide) */
+  function isFullSkin(img) {
+    try {
+      if (img.width !== 64 || (img.height !== 64 && img.height !== 32)) return false;
+      const c = document.createElement("canvas"); c.width = 64; c.height = img.height;
+      const g = c.getContext("2d"); g.drawImage(img, 0, 0);
+      const opaque = (x, y, w, h) => { const d = g.getImageData(x, y, w, h).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++; return n / (w * h); };
+      const body = opaque(20, 20, 8, 12), leg = opaque(4, 20, 4, 12), arm = opaque(44, 20, 3, 12), head = opaque(8, 8, 8, 8);
+      if (body < .9 || leg < .9 || arm < .9 || head < .9) return false;
+      /* corps d'une seule couleur unie = texture de tête/bloc déguisée */
+      const d = g.getImageData(20, 20, 8, 12).data; const set = new Set();
+      for (let i = 0; i < d.length; i += 4) set.add((d[i] >> 3) << 10 | (d[i + 1] >> 3) << 5 | (d[i + 2] >> 3));
+      return set.size >= 2;
+    } catch { return false; }
+  }
   const loadImg = (src) => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = src; });
+  /* une page de skins MineSkin, seulement les skins complets (textures chargées) */
+  async function fullSkinsPage(filter, after, alive = () => true) {
+    const A = api();
+    if (!A?.skinsList) return { ok: false, error: "Disponible dans le launcher.", items: [], after: false };
+    const r = await A.skinsList({ after: after || "", filter, size: 30 });
+    if (!r?.ok) return { ok: false, error: r?.error, items: [], after: false };
+    if (r.blocked) return { ok: false, error: "Recherche refusée par MineSkin.", items: [], after: false };
+    const list = r.skins, out = new Array(list.length).fill(null);
+    let i = 0;
+    const worker = async () => {
+      while (i < list.length && alive()) {
+        const k = i++, s = list[k];
+        try {
+          const t = await A.skinsTexture(s.texture);
+          if (!t?.ok) continue;
+          const img = await loadImg(t.data);
+          if (!isFullSkin(img)) continue;
+          SRC.set(s.texture, img);
+          out[k] = { ...s, data: t.data, img, slim: img.height === 64 && isSlimImage(img) };
+        } catch (_) {}
+      }
+    };
+    await Promise.all(Array.from({ length: 6 }, worker));
+    return { ok: true, items: out.filter(Boolean), after: r.after || false };
+  }
 
   /* ================================================================
      2. GÉNÉRATEUR DE SKIN (créateur)
@@ -115,7 +155,45 @@
     acc: { style: "aucun", color: "#2a2a2d" }, slim: false,
   };
 
+  /* ---------- garde-robe communautaire : pièces prises sur de vrais skins ---------- */
+  const SRC = new Map();   /* texture → Image (skins sources chargés) */
+  const W_REGIONS = {
+    /* [x, y, w, h] dans la texture 64×64 ; les calques extérieurs (y ≥ 32) sont vidés si la source est en 64×32 */
+    top: [[16, 16, 24, 16], [16, 32, 24, 16], [40, 16, 16, 16], [40, 32, 16, 16], [32, 48, 16, 16], [48, 48, 16, 16]],
+    bottom: [[4, 16, 4, 4], [0, 20, 16, 9], [20, 48, 4, 4], [16, 52, 16, 9], [4, 32, 4, 4], [0, 36, 16, 9], [4, 48, 4, 4], [0, 52, 16, 9]],
+    shoes: [[8, 16, 4, 4], [0, 29, 16, 3], [24, 48, 4, 4], [16, 61, 16, 3], [0, 45, 16, 3], [0, 61, 16, 3]],
+    hair: [[32, 0, 32, 16], [8, 0, 8, 8], [24, 8, 8, 6], [0, 8, 8, 3], [16, 8, 8, 3], [8, 8, 8, 1]],
+  };
+  /* régions « jambe gauche » d'une vieille texture 64×32 : on reprend la jambe/le bras droit */
+  const OLD_MAP = { "16,48": [0, 16], "20,48": [4, 16], "16,52": [0, 20], "16,61": [0, 29], "24,48": [8, 16], "32,48": [40, 16] };
+  function pasteWardrobe(canvas, look) {
+    const g = canvas.getContext("2d");
+    for (const cat of ["bottom", "shoes", "top", "hair"]) {
+      const part = look[cat];
+      if (part?.style !== "lib" || !part.src) continue;
+      const img = SRC.get(part.src);
+      if (!img) continue;
+      const old = img.height === 32;
+      for (const [x, y, w, h] of W_REGIONS[cat]) {
+        g.clearRect(x, y, w, h);
+        let sx = x, sy = y;
+        if (old) {
+          if (y >= 32 && !(x === 32 && y === 48 && false)) {
+            const m = OLD_MAP[x + "," + y];
+            if (!m) continue;          /* pas de calque extérieur dans un vieux skin */
+            [sx, sy] = m;
+          }
+        }
+        g.drawImage(img, sx, sy, w, h, x, y, w, h);
+      }
+    }
+  }
   function generateSkin(look) {
+    const c = generateBase(look);
+    pasteWardrobe(c, look);
+    return c;
+  }
+  function generateBase(look) {
     const L = look;
     const c = document.createElement("canvas"); c.width = 64; c.height = 64;
     const g = c.getContext("2d");
@@ -261,7 +339,7 @@
     /* ---------- cheveux ---------- */
     function hairAt(q, over) {
       const H = L.hair.style;
-      if (H === "chauve" || q.part !== "head") return null;
+      if (H === "chauve" || H === "lib" || q.part !== "head") return null;
       const { face, x, y } = q;
       /* mèches : 3 tons répartis en motif régulier (pas de bruit) */
       const strand = (xx, yy) => {
@@ -331,6 +409,7 @@
       const T = L.top.style;
       const onBody = q.part === "body", onArm = q.part === "rarm" || q.part === "larm";
       if (!onBody && !onArm) return null;
+      if (T === "lib") return null;
       const C = { c: topC, m: "top" };
       const stripe = (ly) => (ly % 3 === 2) ? { c: lite(topC, .62), m: "top2" } : { c: topC, m: "top" };
       if (T === "veste") {
@@ -441,6 +520,7 @@
     function bottomAt(q) {
       const B = L.bottom.style;
       const onLeg = q.part === "rleg" || q.part === "lleg";
+      if (B === "lib") return null;
       if (q.part === "body" && q.side && q.ly < 1) {
         if (B === "jupe") return { c: dark(botC, .9), m: "bot" };
         if (q.face === "front" && (q.x === 3 || q.x === 4)) return { c: [214, 178, 74], m: "detail" };   /* boucle */
@@ -484,7 +564,7 @@
       const onLeg = q.part === "rleg" || q.part === "lleg";
       if (!onLeg) return null;
       const S = L.shoes.style;
-      if (S === "nus") return q.face === "bottom" ? { c: mul(skinC, .88), m: "skin" } : null;
+      if (S === "nus" || S === "lib") return q.face === "bottom" ? { c: mul(skinC, .88), m: "skin" } : null;
       if (q.face === "bottom") return { c: S === "baskets" ? [186, 186, 190] : dark(shoeC, .55), m: "shoe" };
       if (!q.side) return null;
       const h = { baskets: 2, bottes: 4, ville: 2 }[S] || 2;
@@ -740,8 +820,11 @@
         after = r.after || false;
         const fresh = r.skins.filter((s) => !seen.has(s.texture));
         fresh.forEach((s) => seen.add(s.texture));
-        if (!fresh.length && !grid.querySelector(".lib-card")) setNote(filter ? "Aucun skin pour « " + filter + " »." : "Aucun skin pour le moment.");
-        for (const s of fresh) grid.appendChild(card(s, s.name || (filter ? filter : "Skin"), s.texture));
+        /* on vérifie chaque texture AVANT de l'afficher : seulement des skins complets */
+        const ok = await validate(fresh, my);
+        if (my !== token) return;
+        for (const s of ok) grid.appendChild(card(s, s.name || (filter ? filter : "Skin"), s.texture, s.data, s.slim));
+        if (!grid.querySelector(".lib-card") && !after) setNote(filter ? "Aucun skin complet pour « " + filter + " »." : "Aucun skin pour le moment.");
         /* remplir l'écran si la grille ne défile pas encore */
         if (after && grid.scrollHeight <= grid.clientHeight + 40) setTimeout(more, 50);
       } catch (e) {
@@ -750,6 +833,24 @@
         loader.remove();
         busy = false;
       }
+    }
+    async function validate(list, my) {
+      const out = new Array(list.length).fill(null);
+      let i = 0;
+      const worker = async () => {
+        while (i < list.length && my === token) {
+          const k = i++, s = list[k];
+          try {
+            const r = await api().skinsTexture(s.texture);
+            if (!r?.ok) continue;
+            const img = await loadImg(r.data);
+            if (!isFullSkin(img)) continue;
+            out[k] = { ...s, data: r.data, slim: img.height === 64 && isSlimImage(img) };
+          } catch (_) {}
+        }
+      };
+      await Promise.all(Array.from({ length: 6 }, worker));
+      return out.filter(Boolean);
     }
     function card(s, label, texture, data = null, slim = null) {
       const el = document.createElement("button");
@@ -858,6 +959,13 @@
     const KEY = "sunrise-creator";
     let look = (() => { try { return { ...structuredClone(DEFAULT_LOOK), ...JSON.parse(localStorage.getItem(KEY) || "{}") }; } catch { return structuredClone(DEFAULT_LOOK); } })();
     let cat = "hair", viewer = null, pending = 0;
+    const WARD = {
+      hair: ["hair", "hat", "crown", "helmet", "cap", "anime", "bunny", "witch"],
+      top: ["hoodie", "jacket", "suit", "armor", "dress", "sweater", "uniform", "shirt", "kimono"],
+      bottom: ["jeans", "skirt", "shorts", "pants", "suit", "armor"],
+      shoes: ["boots", "sneakers", "shoes", "armor", "socks"],
+    };
+    let wardMode = false, wardTerm = "", wardAfter = null, wardBusy = false, wardToken = 0;
 
     function init() {
       const host = $("creator-skin");
@@ -867,8 +975,8 @@
       if (!tabs.dataset.ready) {
         tabs.dataset.ready = "1";
         tabs.innerHTML = Object.entries(OPTS).map(([k, o]) => `<button type="button" class="mod-tab${k === cat ? " cur" : ""}" data-cat="${k}">${esc(o.label)}</button>`).join("");
-        tabs.addEventListener("click", (e) => { const b = e.target.closest("[data-cat]"); if (!b) return; cat = b.dataset.cat; tabs.querySelectorAll("button").forEach((x) => x.classList.toggle("cur", x === b)); renderOptions(); });
-        $("creator-styles").addEventListener("click", (e) => { const b = e.target.closest("[data-style]"); if (!b) return; look[cat].style = b.dataset.style; changed(true); });
+        tabs.addEventListener("click", (e) => { const b = e.target.closest("[data-cat]"); if (!b) return; cat = b.dataset.cat; if (!WARD[cat]) wardMode = false; else if (wardMode) wardTerm = WARD[cat][0]; tabs.querySelectorAll("button").forEach((x) => x.classList.toggle("cur", x === b)); renderOptions(); });
+        $("creator-styles").addEventListener("click", (e) => { const b = e.target.closest("[data-style]"); if (!b) return; look[cat] = { style: b.dataset.style, color: look[cat].color }; changed(true); });
         $("creator-colors").addEventListener("click", (e) => { const b = e.target.closest("[data-color]"); if (!b) return; look[cat].color = b.dataset.color; changed(true); });
         $("creator-color-custom").addEventListener("input", (e) => { look[cat].color = e.target.value; changed(false); });
         $("creator-color-custom").addEventListener("change", () => renderOptions());
@@ -881,6 +989,11 @@
           btn.disabled = true;
           try { await applySkin({ data: generateSkin(look).toDataURL("image/png"), slim: look.slim }); } finally { btn.disabled = false; }
         });
+      }
+      /* recharger les pièces de garde-robe déjà choisies */
+      for (const k of Object.keys(WARD)) {
+        const p = look[k];
+        if (p?.style === "lib" && p.src && p.srcData && !SRC.has(p.src)) loadImg(p.srcData).then((img) => { SRC.set(p.src, img); updatePreview(); renderOptions(); }).catch(() => {});
       }
       $("creator-model").value = look.slim ? "slim" : "classic";
       $("creator-apply-note").textContent = isMsa() ? "Appliquer l'envoie sur ton compte Microsoft : visible en jeu." : "Compte hors-ligne : le skin s'affiche dans le launcher.";
@@ -900,10 +1013,84 @@
         viewer?.loadSkin(c, { model: look.slim ? "slim" : "default" });
       });
     }
+    function modeBar() {
+      let bar = $("creator-mode");
+      if (!bar) {
+        bar = document.createElement("div");
+        bar.id = "creator-mode"; bar.className = "creator-mode";
+        $("creator-styles").before(bar);
+        bar.addEventListener("click", (e) => {
+          const m = e.target.closest("[data-mode]");
+          if (m) { wardMode = m.dataset.mode === "ward"; if (wardMode) wardTerm = WARD[cat][0]; renderOptions(); return; }
+          const t = e.target.closest("[data-term]");
+          if (t) { wardTerm = t.dataset.term; renderOptions(); }
+        });
+        bar.addEventListener("keydown", (e) => { if (e.target.id === "ward-q" && e.key === "Enter") { wardTerm = e.target.value.trim() || WARD[cat][0]; renderOptions(); } });
+        $("creator-styles").addEventListener("scroll", () => { const g = $("creator-styles"); if (wardMode && g.scrollTop + g.clientHeight > g.scrollHeight - 220) wardMore(); });
+      }
+      if (!WARD[cat]) { bar.classList.add("hidden"); wardMode = false; return; }
+      bar.classList.remove("hidden");
+      bar.innerHTML = `<div class="creator-mode-tabs">
+          <button type="button" class="mod-tab${wardMode ? "" : " cur"}" data-mode="models">Modèles SUNRISE</button>
+          <button type="button" class="mod-tab${wardMode ? " cur" : ""}" data-mode="ward">Garde-robe communauté</button>
+        </div>` + (wardMode ? `<div class="creator-terms">${WARD[cat].map((t) => `<button type="button" class="chip-t${t === wardTerm ? " cur" : ""}" data-term="${t}">${t}</button>`).join("")}
+          <input id="ward-q" class="inst-input" placeholder="Autre mot-clé…" spellcheck="false" value="${WARD[cat].includes(wardTerm) ? "" : esc(wardTerm)}"></div>` : "");
+    }
+    async function wardMore() {
+      if (wardBusy || wardAfter === false) return;
+      wardBusy = true;
+      const my = wardToken, grid = $("creator-styles");
+      const loader = document.createElement("div"); loader.className = "lib-loading"; loader.textContent = "Recherche de pièces…";
+      grid.appendChild(loader);
+      try {
+        const r = await fullSkinsPage(wardTerm, wardAfter, () => my === wardToken);
+        if (my !== wardToken) return;
+        if (!r.ok) { loader.textContent = r.error || "Garde-robe indisponible."; wardAfter = false; return; }
+        wardAfter = r.after;
+        loader.remove();
+        for (const it of r.items) grid.appendChild(wardTile(it));
+        if (!grid.querySelector(".creator-opt") && !wardAfter) grid.insertAdjacentHTML("beforeend", `<div class="lib-loading">Aucune pièce pour « ${esc(wardTerm)} ».</div>`);
+        if (wardAfter && grid.scrollHeight <= grid.clientHeight + 40) setTimeout(wardMore, 50);
+      } finally { loader.remove(); wardBusy = false; }
+    }
+    function wardTile(it) {
+      const variant = structuredClone(look);
+      variant[cat] = { style: "lib", color: look[cat].color, src: it.texture };
+      if (cat === "top") variant.slim = it.slim;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "creator-opt" + (look[cat].style === "lib" && look[cat].src === it.texture ? " cur" : "");
+      b.appendChild(thumbFor(variant, cat, null));
+      const s = document.createElement("span"); s.textContent = it.name || wardTerm; b.appendChild(s);
+      b.addEventListener("click", () => {
+        look[cat] = { style: "lib", color: look[cat].color, src: it.texture, srcData: it.data };
+        if (cat === "top") look.slim = it.slim;
+        $("creator-model").value = look.slim ? "slim" : "classic";
+        try { localStorage.setItem(KEY, JSON.stringify(look)); } catch (_) {}
+        updatePreview();
+        $("creator-styles").querySelectorAll(".creator-opt.cur").forEach((x) => x.classList.remove("cur"));
+        b.classList.add("cur");
+      });
+      return b;
+    }
+    function thumbFor(variant, c, id) {
+      const thumb = frontRender(generateSkin(variant), 4, variant.slim);
+      const box = document.createElement("div"); box.className = "creator-thumb";
+      if (c === "hair" || c === "eyes" || c === "skin" || (c === "acc" && ["lunettes", "soleil", "casquette", "bandeau", "casque"].includes(id))) {
+        const z = document.createElement("canvas"); z.width = 64; z.height = 64;
+        const g = z.getContext("2d"); g.imageSmoothingEnabled = false;
+        g.drawImage(thumb, 16, 0, 32, 32, 0, 0, 64, 64);
+        box.appendChild(z);
+      } else box.appendChild(thumb);
+      return box;
+    }
     function renderOptions() {
       const o = OPTS[cat];
       const styles = $("creator-styles");
       styles.innerHTML = "";
+      modeBar();
+      $("creator-colors").parentElement.classList.toggle("hidden", wardMode);
+      if (wardMode) { wardToken++; wardAfter = null; wardBusy = false; styles.scrollTop = 0; wardMore(); return; }
       for (const [id, label] of o.styles) {
         const variant = structuredClone(look);
         variant[cat].style = id;
@@ -911,16 +1098,7 @@
         b.type = "button";
         b.className = "creator-opt" + (look[cat].style === id ? " cur" : "");
         b.dataset.style = id;
-        const thumb = frontRender(generateSkin(variant), 4, look.slim);
-        const box = document.createElement("div"); box.className = "creator-thumb";
-        if (cat === "hair" || cat === "eyes" || (cat === "acc" && ["lunettes", "soleil", "casquette", "bandeau", "casque"].includes(id)) || cat === "skin") {
-          /* zoom sur la tête */
-          const z = document.createElement("canvas"); z.width = 64; z.height = 64;
-          const g = z.getContext("2d"); g.imageSmoothingEnabled = false;
-          g.drawImage(thumb, 16, 0, 32, 32, 0, 0, 64, 64);
-          box.appendChild(z);
-        } else box.appendChild(thumb);
-        b.appendChild(box);
+        b.appendChild(thumbFor(variant, cat, id));
         const s = document.createElement("span"); s.textContent = label; b.appendChild(s);
         styles.appendChild(b);
       }
@@ -932,10 +1110,7 @@
     }
     function randomize() {
       const r = (a) => a[Math.floor(Math.random() * a.length)];
-      for (const [k, o] of Object.entries(OPTS)) {
-        look[k].style = r(o.styles)[0];
-        look[k].color = r(PAL[o.color]);
-      }
+      for (const [k, o] of Object.entries(OPTS)) look[k] = { style: r(o.styles)[0], color: r(PAL[o.color]) };
       if (Math.random() < .5) look.acc.style = "aucun";
       changed(true);
     }
