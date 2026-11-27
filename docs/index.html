@@ -52,28 +52,42 @@ a { color: inherit; text-decoration: none; }
 .nav-gh:hover { color: var(--text); background: rgba(255,255,255,.06); }
 .nav-gh svg { width: 20px; height: 20px; }
 
-/* ---------- hero ---------- */
-.hero { position: relative; padding: 84px 0 0; text-align: center; overflow: hidden; }
-.hero .glow.a { width: 620px; height: 420px; left: 50%; top: -120px; transform: translateX(-50%); background: radial-gradient(circle, #ff8a3d, transparent 70%); }
-.hero .glow.b { width: 520px; height: 520px; left: -160px; top: 220px; background: radial-gradient(circle, #5b3dd8, transparent 70%); opacity: .35; }
-.hero .glow.c { width: 520px; height: 520px; right: -180px; top: 120px; background: radial-gradient(circle, #2f6fd6, transparent 70%); opacity: .3; }
+/* ---------- hero (façon essential.gg) ---------- */
+.hero { position: relative; min-height: min(720px, calc(100vh - 68px)); display: flex; overflow: hidden; border-bottom: 1px solid var(--line); background: #07080f; }
+.hero-grid-lines { position: absolute; inset: 0; pointer-events: none;
+  background-image: linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px); background-size: calc(min(1180px, 92vw) / 4) 100%;
+  background-position: calc((100vw - min(1180px, 92vw)) / 2) 0; }
+.hero .glow.a { width: 760px; height: 520px; right: -120px; bottom: -160px; background: radial-gradient(circle, #ff8a3d, transparent 68%); opacity: .38; }
+.hero-in { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: space-between; padding: 72px 0 34px; }
+.hero-txt { max-width: 640px; }
 .pill { display: inline-flex; align-items: center; gap: 10px; padding: 7px 14px 7px 8px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid var(--line2); font-size: 14px; color: var(--dim); }
 .pill b { padding: 3px 10px; border-radius: 999px; color: #1d0f00; background: var(--grad); font-size: 12px; letter-spacing: .3px; }
-.hero h1 { position: relative; margin: 26px auto 18px; max-width: 900px; font-family: var(--pix); font-weight: normal; font-size: clamp(42px, 6.6vw, 82px); line-height: 1.02; letter-spacing: 1px; }
+.hero h1 { margin: 26px 0 22px; font-family: var(--pix); font-weight: normal; font-size: clamp(44px, 6.4vw, 86px); line-height: 1; letter-spacing: 2px;
+  background: linear-gradient(180deg, #ffffff 0%, #dfe3f5 45%, #9aa3c4 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .hero h1 span { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.hero .sub { position: relative; max-width: 640px; margin: 0 auto; font-size: 19px; color: var(--dim); }
-.hero-cta { position: relative; display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin: 34px 0 16px; }
-.hero-meta { position: relative; display: flex; justify-content: center; flex-wrap: wrap; gap: 8px 22px; font-size: 14px; color: var(--faint); }
-.hero-meta i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 0 4px rgba(74,222,128,.18); vertical-align: 1px; }
-.hero-meta b { color: var(--text); font-weight: 700; }
-.stage { position: relative; margin: 64px auto 0; width: min(1100px, 94vw); }
-.window { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line2); background: #0d0f1e; box-shadow: 0 40px 120px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03); }
+.hero .sub { max-width: 560px; font-size: 19px; color: var(--dim); }
+.hero-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 36px; }
+.btn-big { padding: 20px 46px; border-radius: 4px; font-family: var(--pix); font-weight: normal; font-size: 18px; letter-spacing: 1.5px; text-transform: uppercase; }
+.btn-big svg { width: 20px; height: 20px; }
+.cta-note { margin-left: 14px; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 14px; color: var(--faint); }
+.hero-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 60px; margin-top: 50px; font-size: 16px; color: var(--dim); }
+.hero-foot a { color: var(--text); text-decoration: underline; text-underline-offset: 4px; font-weight: 700; }
+.live-pill { display: inline-flex; align-items: center; gap: 10px; color: var(--text); font-weight: 700; }
+.live-pill i { width: 12px; height: 12px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 0 6px rgba(74,222,128,.16); }
+.live-pill.off i { background: var(--faint); box-shadow: 0 0 0 6px rgba(255,255,255,.06); }
+.hero-gif { position: absolute; z-index: 1; right: max(-40px, calc((100vw - 1180px) / 2 - 140px)); bottom: -6px; width: min(46vw, 620px); filter: drop-shadow(0 30px 50px rgba(0,0,0,.6)); }
+.showcase { width: min(1100px, 94vw); margin: 90px auto 0; }
+.window { position: relative; border-radius: 16px; overflow: hidden; border: 1px solid var(--line2); background: #0d0f1e; box-shadow: 0 40px 120px rgba(0,0,0,.6); }
 .window-bar { display: flex; align-items: center; gap: 7px; height: 36px; padding: 0 14px; background: #141729; border-bottom: 1px solid var(--line); font-size: 12px; color: var(--faint); }
 .window-bar i { width: 11px; height: 11px; border-radius: 50%; background: #2a2e48; }
 .window-bar i:nth-child(1) { background: #ff5f57; } .window-bar i:nth-child(2) { background: #febc2e; } .window-bar i:nth-child(3) { background: #28c840; }
 .window-bar span { margin-left: 10px; }
-.stage .office { position: absolute; left: -60px; bottom: -30px; width: 280px; z-index: 3; filter: drop-shadow(0 24px 30px rgba(0,0,0,.55)); }
-.stage::after { content: ""; position: absolute; z-index: 1; left: 0; right: 0; bottom: -2px; height: 120px; background: linear-gradient(0deg, var(--bg), transparent); pointer-events: none; }
+@media (max-width: 980px) {
+  .hero { min-height: 0; }
+  .hero-in { padding-bottom: 300px; }
+  .hero-gif { width: 380px; right: -20px; }
+  .hero-grid-lines { background-size: 25vw 100%; background-position: 0 0; }
+}
 
 /* ---------- sections ---------- */
 section { position: relative; padding: 110px 0; }
@@ -179,7 +193,6 @@ footer { border-top: 1px solid var(--line); padding: 54px 0 40px; color: var(--f
   .skin-card { grid-row: auto; min-height: 560px; }
   .stats { grid-template-columns: repeat(2, 1fr); }
   .foot { grid-template-columns: 1fr 1fr; }
-  .stage .office { width: 200px; left: -10px; bottom: -30px; }
   .rel { grid-template-columns: 80px 1fr auto; } .rel .d { display: none; }
 }
 </style>
@@ -202,30 +215,34 @@ footer { border-top: 1px solid var(--line); padding: 54px 0 40px; color: var(--f
 </nav>
 
 <header class="hero">
-  <div class="glow a"></div><div class="glow b"></div><div class="glow c"></div>
-  <div class="wrap">
-    <span class="pill reveal"><b>NOUVEAU</b> Bibliothèque de skins, créateur et cosmétiques</span>
-    <h1 class="reveal" style="--d:80ms">Le launcher Minecraft <span>des copains.</span></h1>
-    <p class="sub reveal" style="--d:160ms">Change de skin en un clic parmi des milliers, crée le tien pièce par pièce, porte des chapeaux 3D sur ton skin, et rejoins mc-copaing sans rien installer.</p>
-    <div class="hero-cta reveal" style="--d:240ms">
-      <a class="btn btn-main" id="btn-dl" href="https://github.com/YutsiOFF/SUNRISE-Updates/releases/latest">
-        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5 10.5 4.4v7.1H3zm0 13L10.5 19.6v-7H3zm8.4 1.2L21 21V12.6h-9.6zm0-15.4v7.2H21V3z"/></svg>
-        Télécharger pour Windows <small id="dl-ver"></small></a>
-      <a class="btn btn-ghost" href="#perso">Voir les nouveautés</a>
+  <div class="hero-grid-lines"></div>
+  <div class="glow a"></div>
+  <div class="wrap hero-in">
+    <div class="hero-txt">
+      <span class="pill reveal"><b>NOUVEAU</b> Skins, créateur et cosmétiques</span>
+      <h1 class="reveal" style="--d:80ms">Le meilleur moyen de jouer <span>avec tes potes.</span></h1>
+      <p class="sub reveal" style="--d:160ms">Le launcher Minecraft des copains : bibliothèque géante de skins, créateur pièce par pièce, chapeaux 3D, mods en un clic et mc-copaing sans rien installer.</p>
+      <div class="hero-cta reveal" style="--d:240ms">
+        <a class="btn btn-main btn-big" id="btn-dl" href="https://github.com/YutsiOFF/SUNRISE-Updates/releases/latest">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="square"><path d="M12 4v11m0 0-5-5m5 5 5-5M5 20h14"/></svg>
+          Télécharger <small id="dl-ver"></small></a>
+        <span class="cta-note">└─ Pour Windows 10 / 11 · gratuit</span>
+      </div>
     </div>
-    <div class="hero-meta reveal" style="--d:300ms">
-      <span id="srv-hero"><i></i><b id="srv-hero-n">mc-copaing</b> · serveur des copains</span>
-      <span>Windows 10 / 11 · gratuit · mises à jour automatiques</span>
+    <div class="hero-foot reveal" style="--d:320ms">
+      <span>Minecraft 1.7 → 26.3 · <a href="#versions">Toutes les versions</a></span>
+      <span class="live-pill" id="srv-hero"><i></i><b id="srv-hero-n">mc-copaing</b></span>
     </div>
   </div>
-  <div class="stage reveal" style="--d:360ms">
-    <div class="window">
-      <div class="window-bar"><i></i><i></i><i></i><span>SUNRISE Launcher</span></div>
-      <img src="assets/shots/home.webp" width="1280" height="800" alt="Accueil du launcher SUNRISE">
-    </div>
-    <img class="office" src="assets/gif/office.webp" width="542" height="462" alt="Yutsi qui code le launcher">
-  </div>
+  <img class="hero-gif" src="assets/gif/office.webp" width="542" height="462" alt="Yutsi qui code le launcher SUNRISE">
 </header>
+
+<div class="showcase reveal">
+  <div class="window">
+    <div class="window-bar"><i></i><i></i><i></i><span>SUNRISE Launcher</span></div>
+    <img src="assets/shots/home.webp" width="1280" height="800" alt="Accueil du launcher SUNRISE">
+  </div>
+</div>
 
 <!-- ======== personnalisation ======== -->
 <section id="perso">
@@ -441,7 +458,8 @@ document.querySelectorAll(".reveal").forEach((n) => io.observe(n));
 (async () => {
   const set = (on, txt) => {
     el("srv-live").classList.toggle("off", !on); el("srv-live-t").textContent = txt;
-    el("srv-hero-n").textContent = on ? txt : "mc-copaing";
+    el("srv-hero-n").textContent = on ? txt : "mc-copaing · serveur des copains";
+    el("srv-hero").classList.toggle("off", !on);
   };
   try {
     const r = await fetch("https://api.crafty.gg/api/v2/servers/ping?ip=mc-copaing.duckdns.org:25565&edition=java", { signal: AbortSignal.timeout(8000) });

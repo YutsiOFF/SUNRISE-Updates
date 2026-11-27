@@ -119,313 +119,430 @@
     const L = look;
     const c = document.createElement("canvas"); c.width = 64; c.height = 64;
     const g = c.getContext("2d");
-    const base = g.createImageData(64, 64);
-    const D = base.data;
-    const put = (x, y, col, a = 255) => { const i = (y * 64 + x) * 4; D[i] = col[0]; D[i + 1] = col[1]; D[i + 2] = col[2]; D[i + 3] = a; };
+    const img = g.createImageData(64, 64);
+    const D = img.data;
     const skinC = hex(L.skin.color), hairC = hex(L.hair.color), eyeC = hex(L.eyes.color);
     const topC = hex(L.top.color), botC = hex(L.bottom.color), shoeC = hex(L.shoes.color), accC = hex(L.acc.color);
+    const WHITE = [238, 238, 240], RIB = 0.8;
+    const lite = (col, t = .3) => mix(col, [255, 255, 255], t);
+    const dark = (col, k = .72) => mul(col, k);
     const aw = L.slim ? 3 : 4;
+    /* matériaux qui reçoivent un contour quand ils touchent autre chose */
+    const OUTLINED = new Set(["top", "bot", "shoe", "hair", "acc", "hood"]);
 
-    let pIndex = 0;
     for (const [name, P] of Object.entries(PARTS)) {
-      pIndex++;
       const w = (name === "rarm" || name === "larm") ? aw : P.w;
       for (const layer of ["base", "over"]) {
         const rects = faceRects(P[layer], w, P.h, P.d);
         for (const [face, [fx, fy, fw, fh]] of Object.entries(rects)) {
+          /* 1) matériau + couleur de chaque pixel de la face */
+          const cell = [];
           for (let py = 0; py < fh; py++) for (let px = 0; px < fw; px++) {
             const side = face !== "top" && face !== "bottom";
             const wy = side ? P.y0 + (P.h - 1 - py) : face === "top" ? P.y0 + P.h : P.y0 - 1;
-            const ctx = { part: name, face, x: px, y: py, w: fw, h: fh, wy, ly: wy - P.y0, side, layer };
-            const col = layer === "base" ? paintBase(ctx) : paintOver(ctx);
-            if (!col) continue;
-            const n = 1 + (hash(fx + px, fy + py, pIndex) - .5) * (col.grain ?? .06);
-            const k = FACE_LIGHT[face] * n * (col.k ?? 1);
-            put(fx + px, fy + py, mul(col.c, k), col.a ?? 255);
+            const q = { part: name, face, x: px, y: py, w: fw, h: fh, wy, ly: wy - P.y0, side, layer };
+            cell.push(layer === "base" ? paintBase(q) : paintOver(q));
+          }
+          /* 2) ombrage propre : face + dégradé en bandes + contours */
+          const at = (x, y) => (x < 0 || y < 0 || x >= fw || y >= fh) ? null : cell[y * fw + x];
+          for (let py = 0; py < fh; py++) for (let px = 0; px < fw; px++) {
+            const p = cell[py * fw + px];
+            if (!p) continue;
+            let k = FACE_LIGHT[face];
+            const sideFace = face !== "top" && face !== "bottom";
+            if (sideFace && p.m !== "eye" && p.m !== "detail") {
+              /* lumière venant du haut : haut de chaque pièce un peu plus clair */
+              const t = py / Math.max(1, fh - 1);
+              k *= t < .2 ? 1.05 : t > .8 ? .93 : 1;
+            }
+            if ((p.m === "top" || p.m === "bot" || p.m === "top2") && (face === "front" || face === "back") && fw >= 4 && (px === 0 || px === fw - 1)) k *= .94;
+            if (sideFace && p.m !== "eye" && p.m !== "detail") {
+              const innerFace = (name === "rarm" && face === "left") || (name === "larm" && face === "right") || (name === "rleg" && face === "left") || (name === "lleg" && face === "right");
+              if (innerFace) k *= .93;
+            }
+            if (OUTLINED.has(p.m) && sideFace) {
+              const nb = [at(px, py - 1), at(px, py + 1), at(px - 1, py), at(px + 1, py)];
+              const edge = nb.some((n) => n && n.m !== p.m && n.m !== "detail" && !(p.m === "hair" && n.m === "hair2") && !(p.m === "top" && n.m === "top2"));
+              /* sur le calque extérieur, le bord contre le vide se fonce aussi */
+              const rim = layer === "over" && nb.some((n) => n === null) && false;
+              if (edge || rim) k *= p.m === "hair" ? .84 : .8;
+            }
+            const col = mul(p.c, k * (p.k ?? 1));
+            const i = ((fy + py) * 64 + fx + px) * 4;
+            D[i] = col[0]; D[i + 1] = col[1]; D[i + 2] = col[2]; D[i + 3] = 255;
           }
         }
       }
     }
-    g.putImageData(base, 0, 0);
+    g.putImageData(img, 0, 0);
     return c;
 
-    /* ------------------------------------------------------------ */
+    /* ===== calque de base : peau, visage, vêtements ===== */
     function paintBase(q) {
-      let out = { c: skinC, grain: .03 };
-      const S = L.skin.style;
-      /* peau : ombre sous le menton, mains un peu plus foncées */
-      if (q.part === "head" && q.side && q.y === 7) out = { c: mul(skinC, .93), grain: .02 };
+      let out = { c: skinC, m: "skin" };
       if (q.part === "head") {
-        const f = headFace(q);
-        if (f) out = f;
+        if (q.side && q.y === 7 && q.face !== "front") out = { c: mul(skinC, .94), m: "skin" };
+        const f = faceAt(q); if (f) out = f;
+        const h = hairAt(q, false); if (h) out = h;
+        const b = beardAt(q); if (b && !h) out = b;
+        return out;
       }
-      /* bas (pantalon / short / jupe) */
-      const bot = bottomAt(q);
-      if (bot) out = bot;
-      /* haut */
-      const top = topAt(q, "base");
-      if (top) out = top;
-      /* chaussures */
-      const sh = shoesAt(q);
-      if (sh) out = sh;
-      /* cheveux sur la tête */
-      if (q.part === "head") { const h = hairAt(q, "base"); if (h) out = h; }
-      if (S === "barbe" && q.part === "head" && (q.face === "front" || q.side) && !hairAt(q, "base")) {
-        const yy = q.y;
-        if (q.face === "front" && (yy >= 6 || (yy === 5 && (q.x <= 1 || q.x >= 6)))) out = { c: mul(hairC, 1.05), grain: .14 };
-        if ((q.face === "right" || q.face === "left") && yy >= 5) out = { c: mul(hairC, 1.0), grain: .14 };
-        if (q.face === "front" && yy === 6 && q.x >= 3 && q.x <= 4) out = { c: mul(skinC, .62) };
-      }
+      const isArm = q.part === "rarm" || q.part === "larm";
+      if (isArm && q.side && q.ly === 0) out = { c: mul(skinC, .95), m: "skin" };   /* main */
+      const bot = bottomAt(q); if (bot) out = bot;
+      const top = topAt(q); if (top) out = top;
+      const sh = shoesAt(q); if (sh) out = sh;
       return out;
     }
+    /* ===== calque extérieur : volume (cheveux, capuche, veste, jupe, accessoires) ===== */
     function paintOver(q) {
       let out = null;
       if (q.part === "head") {
-        out = hairAt(q, "over");
+        out = hairAt(q, true) || hoodAt(q);
         const a = accAt(q); if (a) out = a;
-      } else {
-        const t = topAt(q, "over"); if (t) out = t;
-        const b = bottomOver(q); if (b) out = b;
-        if (q.part === "body" && L.hair.style === "long" && q.face === "back" && q.ly >= 6) out = { c: mul(hairC, 1.02), grain: .16 };
-        if (q.part === "body" && L.hair.style === "queue" && q.face === "back" && q.ly >= 8 && q.x >= 3 && q.x <= 4) out = { c: mul(hairC, 1.02), grain: .16 };
-        const a = accAt(q); if (a) out = a;
+        return out;
       }
+      out = jacketAt(q) || skirtAt(q) || longHairBody(q);
+      const a = accAt(q); if (a) out = a;
       return out;
     }
 
-    /* visage --------------------------------------------------------- */
-    function headFace(q) {
+    /* ---------- visage ---------- */
+    function faceAt(q) {
       if (q.face !== "front") return null;
-      const { x, y } = q;
-      const E = L.eyes.style;
-      const white = [244, 244, 244];
-      const L_EYE = [1, 2], R_EYE = [5, 6];
-      const inL = x >= 1 && x <= 2, inR = x >= 5 && x <= 6;
-      const pupil = (inL && x === 2) || (inR && x === 5);
-      if (E === "classique" && y === 4 && (inL || inR)) return { c: pupil ? eyeC : white, grain: 0 };
-      if (E === "grands" && (y === 3 || y === 4) && (inL || inR)) return { c: pupil ? (y === 3 ? mix(eyeC, white, .35) : eyeC) : white, grain: 0 };
-      if (E === "anime" && (y === 3 || y === 4) && (inL || inR)) {
-        if (y === 3 && !pupil) return { c: white, grain: 0 };
-        return { c: pupil ? (y === 3 ? mix(eyeC, white, .55) : eyeC) : mul(eyeC, .55), grain: 0 };
+      const { x, y } = q, E = L.eyes.style;
+      const inL = x === 1 || x === 2, inR = x === 5 || x === 6;
+      const inner = x === 2 || x === 5;          /* iris côté nez */
+      const brow = mul(hairC, .85);
+      if (E === "classique") {
+        if (y === 4 && (inL || inR)) return { c: inner ? eyeC : WHITE, m: "eye" };
+        if (y === 3 && (inL || inR)) return { c: brow, m: "eye", k: inner ? 1 : .95 };
       }
-      if (E === "fermes" && y === 4 && (inL || inR)) return { c: mul(hairC, .7), grain: 0 };
+      if (E === "grands") {
+        if ((y === 3 || y === 4) && (inL || inR)) return { c: inner ? (y === 3 ? lite(eyeC, .25) : dark(eyeC, .8)) : WHITE, m: "eye" };
+        if (y === 2 && (inL || inR)) return { c: brow, m: "eye" };
+      }
+      if (E === "anime") {
+        if ((y === 3 || y === 4) && (inL || inR)) {
+          if (inner) return { c: y === 3 ? lite(eyeC, .45) : eyeC, m: "eye" };
+          return { c: y === 3 ? [30, 30, 34] : WHITE, m: "eye" };
+        }
+        if (y === 2 && (inL || inR)) return { c: brow, m: "eye" };
+      }
+      if (E === "fermes") {
+        if (y === 4 && (inL || inR)) return { c: dark(skinC, .55), m: "eye" };
+        if (y === 3 && (x === 1 || x === 6)) return { c: dark(skinC, .62), m: "eye" };
+      }
       if (E === "colere") {
-        if (y === 4 && (inL || inR)) return { c: pupil ? eyeC : white, grain: 0 };
-        if (y === 3 && ((inL && x === 2) || (inR && x === 5))) return { c: mul(hairC, .8), grain: 0 };
+        if (y === 4 && (inL || inR)) return { c: inner ? eyeC : WHITE, m: "eye" };
+        if (y === 3 && (x === 2 || x === 5)) return { c: brow, m: "eye" };
       }
-      /* sourcils (sauf frange qui les cache) */
-      if (y === 2 && (inL || inR) && E !== "colere" && E !== "grands" && E !== "anime") return { c: mul(hairC, .9), grain: .05 };
-      /* bouche */
-      if (y === 6 && x >= 3 && x <= 4) return { c: mul(skinC, .72), grain: 0 };
-      if (L.skin.style === "joues" && y === 5 && (x === 1 || x === 6)) return { c: mix(skinC, [232, 120, 120], .45), grain: 0 };
-      if (L.skin.style === "taches" && y === 5 && (x === 1 || x === 2 || x === 5 || x === 6) && (x + y) % 2) return { c: mul(skinC, .8), grain: 0 };
-      if (y === 5 && (x === 3 || x === 4)) return { c: mul(skinC, .9), grain: 0 };   /* nez */
+      /* nez, bouche, joues */
+      if (y === 5 && (x === 3 || x === 4)) return { c: mul(skinC, .9), m: "skin" };
+      if (y === 6 && (x === 3 || x === 4)) return { c: L.skin.style === "barbe" ? dark(hairC, .7) : mul(skinC, .74), m: "detail" };
+      if (y === 6 && (x === 2 || x === 5) && E === "fermes") return { c: mul(skinC, .82), m: "detail" };
+      if (L.skin.style === "joues" && y === 5 && (x === 1 || x === 6)) return { c: mix(skinC, [236, 118, 118], .45), m: "detail" };
+      if (L.skin.style === "taches" && ((y === 5 && (x === 1 || x === 6)) || (y === 5 && (x === 2 || x === 5) && false))) return { c: mul(skinC, .82), m: "detail" };
+      if (L.skin.style === "taches" && y === 4 && (x === 0 || x === 7)) return { c: mul(skinC, .85), m: "detail" };
+      return null;
+    }
+    function beardAt(q) {
+      if (L.skin.style !== "barbe" || q.part !== "head" || !q.side) return null;
+      const { face, x, y } = q;
+      const c2 = (k = 1) => ({ c: mul(hairC, k), m: "hair2" });
+      if (face === "front" && (y === 7 || (y === 6 && x !== 3 && x !== 4) || (y === 5 && (x === 0 || x === 7)))) return c2(y === 7 ? .9 : 1);
+      if ((face === "right" || face === "left") && y >= 5) {
+        const front = face === "right" ? x <= 3 : x >= 4;
+        if (front || y === 7) return c2(.92);
+      }
       return null;
     }
 
-    /* cheveux -------------------------------------------------------- */
-    function hairAt(q, layer) {
+    /* ---------- cheveux ---------- */
+    function hairAt(q, over) {
       const H = L.hair.style;
-      if (H === "chauve") return null;
-      const col = (k = 1) => ({ c: mul(hairC, k * (1 + (((q.x * 7 + q.y * 3) % 5) - 2) * .025)), grain: .1 });
+      if (H === "chauve" || q.part !== "head") return null;
       const { face, x, y } = q;
+      /* mèches : 3 tons répartis en motif régulier (pas de bruit) */
+      const strand = (xx, yy) => {
+        const s = (xx * 3 + (yy >> 1)) % 4;
+        return s === 0 ? .86 : s === 2 ? 1.08 : 1;
+      };
+      const col = (k = 1) => ({ c: mul(hairC, k * strand(x, y)), m: "hair" });
       if (H === "rase") {
-        if (layer === "over") return null;
-        if (face === "top") return { c: mix(skinC, hairC, .65), grain: .2 };
-        if (face !== "front" && face !== "bottom" && y <= 2) return { c: mix(skinC, hairC, .55), grain: .2 };
+        if (over) return null;
+        if (face === "top") return { c: mix(skinC, hairC, .7), m: "hair2" };
+        if (face !== "front" && face !== "bottom" && y <= 2) return { c: mix(skinC, hairC, .6), m: "hair2" };
+        if (face === "front" && y === 0) return { c: mix(skinC, hairC, .6), m: "hair2" };
         return null;
       }
       if (H === "iroquois") {
-        if (face === "top" && x >= 3 && x <= 4) return col(1.05);
-        if (face === "back" && x >= 3 && x <= 4 && y <= 5) return col(.95);
-        if (face === "front" && x >= 3 && x <= 4 && y === 0) return col(1);
-        if (layer === "base" && face === "top") return { c: mix(skinC, hairC, .3), grain: .2 };
+        const mid = x >= 3 && x <= 4;
+        if (face === "top" && mid) return col(1.1);
+        if (face === "back" && mid && y <= 5) return col(.95);
+        if (face === "front" && mid && y === 0) return col(1);
+        if (!over && (face === "top" || ((face === "right" || face === "left") && y <= 1))) return { c: mix(skinC, hairC, .35), m: "hair2" };
         return null;
       }
-      /* zones par style (hauteur de couverture sur chaque face) */
-      const cover = {
-        court: { front: [0, 1], side: 3, back: 5 },
-        frange: { front: [0, 2], side: 4, back: 6 },
-        milong: { front: [0, 1], side: 6, back: 7 },
-        long: { front: [0, 1], side: 7, back: 7 },
-        boucle: { front: [0, 1], side: 4, back: 6 },
-        queue: { front: [0, 1], side: 3, back: 6 },
-      }[H] || { front: [0, 1], side: 3, back: 5 };
-      const over = layer === "over";
-      if (face === "top") return col(over ? 1.08 : 1);
+      const S = {
+        court: { front: 1, side: 3, back: 5 }, frange: { front: 2, side: 4, back: 6 },
+        milong: { front: 1, side: 6, back: 7 }, long: { front: 1, side: 7, back: 7 },
+        boucle: { front: 1, side: 4, back: 6 }, queue: { front: 1, side: 3, back: 5 },
+      }[H] || { front: 1, side: 3, back: 5 };
       if (face === "bottom") return null;
+      if (face === "top") return col(over ? 1.06 : 1);
       if (face === "front") {
-        const [, rows] = cover.front;
-        if (y <= rows - 1) return col(over ? 1.04 : 1);
-        /* mèches de frange */
-        if (H === "frange" && y === rows && x % 3 !== 1) return col(.92);
-        if (H === "court" && y === rows && (x === 0 || x === 7 || x === 3)) return col(.9);
-        if ((H === "milong" || H === "long") && (x === 0 || x === 7) && y <= cover.side) return col(.9);
-        if (H === "boucle" && y === rows && x % 2 === 0) return col(.95);
+        if (y < S.front) return col(1.06);
+        if (y === S.front) {
+          /* forme de la frange */
+          if (H === "court" && (x === 0 || x === 1 || x === 6 || x === 7)) return col(.95);
+          if (H === "frange" && x !== 6) return col(.92);
+          if (H === "boucle" && x % 2 === 0) return col(.95);
+          if ((H === "milong" || H === "long" || H === "queue") && (x <= 1 || x >= 6)) return col(.95);
+        }
+        if ((H === "milong" || H === "long") && (x === 0 || x === 7) && y <= S.side) return col(.9);
         return null;
       }
       if (face === "back") {
-        if (y <= cover.back) return col(over ? .98 : .94);
+        if (y <= S.back) return col(.95);
         if (H === "queue" && x >= 3 && x <= 4) return col(.9);
+        if ((H === "long" || H === "milong") && y === 7) return col(.88);
         return null;
       }
-      /* côtés : dégradé vers l'arrière */
-      const towardBack = face === "right" ? x : (7 - x);   /* 0 = devant */
-      const lim = cover.side + (towardBack >= 4 ? 2 : towardBack >= 2 ? 1 : 0);
-      if (y <= Math.min(7, lim)) return col(over ? 1 : .96);
+      /* côtés : plus long vers l'arrière, dégagé devant l'oreille */
+      const back = face === "right" ? x : 7 - x;     /* 0 = devant */
+      let lim = S.side + (back >= 5 ? 2 : back >= 3 ? 1 : 0);
+      if (back <= 1 && (H === "court" || H === "queue")) lim = Math.min(lim, 2);
+      if (y <= Math.min(7, lim)) return col(.97);
       if (H === "boucle" && over && y === lim + 1 && (x + y) % 2 === 0) return col(.9);
       return null;
     }
+    function longHairBody(q) {
+      const H = L.hair.style;
+      if (q.part !== "body" || q.face !== "back") return null;
+      const s = (q.x * 3 + (q.y >> 1)) % 4, k = s === 0 ? .86 : s === 2 ? 1.06 : 1;
+      if (H === "long" && q.ly >= 6) return { c: mul(hairC, k * .95), m: "hair" };
+      if (H === "queue" && q.ly >= 7 && q.x >= 3 && q.x <= 4) return { c: mul(hairC, k * .95), m: "hair" };
+      return null;
+    }
 
-    /* haut ----------------------------------------------------------- */
-    function topAt(q, layer) {
+    /* ---------- haut ---------- */
+    function topAt(q) {
       const T = L.top.style;
-      if (q.part === "head") {
-        if (T === "hoodie" && layer === "over" && (q.face === "back" || q.face === "right" || q.face === "left") && q.y >= (q.face === "back" ? 4 : 6)) {
-          return { c: mul(topC, q.face === "back" ? .95 : .9), grain: .05 };
-        }
-        return null;
-      }
-      const onBody = q.part === "body";
-      const onArm = q.part === "rarm" || q.part === "larm";
+      const onBody = q.part === "body", onArm = q.part === "rarm" || q.part === "larm";
       if (!onBody && !onArm) return null;
-      const lining = mix(topC, [255, 255, 255], .82);
-      if (layer === "over") {
-        if (T === "veste") {
-          if (onBody && q.face === "front" && (q.x === 3 || q.x === 4)) return null;   /* ouverte devant */
-          if (onBody && q.face === "front" && q.y === 0 && (q.x === 2 || q.x === 5)) return { c: mul(topC, 1.15) };
-          if (onBody && q.face !== "bottom") return { c: topC, grain: .05 };
-          if (onArm && q.ly >= 1 && q.face !== "bottom") return { c: q.ly === 1 ? mul(topC, .82) : topC, grain: .05 };
-        }
-        if (T === "hoodie" && onBody && q.face === "front") {
-          if ((q.x === 2 || q.x === 5) && q.y >= 1 && q.y <= 4) return { c: [236, 236, 236], grain: .02 };   /* cordons */
-          if (q.y >= 7 && q.y <= 9 && q.x >= 1 && q.x <= 6) return { c: mul(topC, q.y === 7 ? .85 : .95), grain: .04 };   /* poche */
-        }
-        return null;
-      }
-      /* base */
+      const C = { c: topC, m: "top" };
+      const stripe = (ly) => (ly % 3 === 2) ? { c: lite(topC, .62), m: "top2" } : { c: topC, m: "top" };
       if (T === "veste") {
-        /* t-shirt blanc dessous */
-        if (onBody && q.ly >= 1) return { c: lining, grain: .03 };
-        if (onArm && q.ly >= 8) return { c: lining, grain: .03 };
+        /* t-shirt blanc sous la veste ouverte */
+        if (onBody && q.ly >= 1) return { c: WHITE, m: "top2" };
+        if (onArm && q.ly >= 9) return { c: WHITE, m: "top2" };
         return null;
       }
       if (onBody) {
-        if (q.ly < 1 && !(T === "debardeur")) return null;   /* ceinture du pantalon */
-        if (q.ly < 1) return null;
-        let c = topC;
-        if (T === "raye") c = (q.ly % 3 === 0) ? mul(topC, .55) : ((q.ly % 3 === 1) ? topC : mix(topC, [255, 255, 255], .5));
-        if (T === "chemise" && q.face === "front") {
-          if (q.y === 0 && (q.x === 2 || q.x === 5)) c = mix(topC, [255, 255, 255], .7);   /* col */
-          if ((q.x === 4) && q.y % 3 === 1) c = mul(topC, .62);   /* boutons */
-          if (q.x === 3) c = mul(topC, .9);
+        if (q.face === "bottom") return null;
+        if (q.face === "top") {
+          if (T === "hoodie") return { c: dark(topC, .85), m: "top" };   /* bord de capuche */
+          if (T === "debardeur" && (q.x <= 1 || q.x >= 6)) return null;
+          return C;
         }
-        if (T === "tshirt" && q.face === "front" && q.y === 0 && q.x >= 3 && q.x <= 4) return null;   /* col rond */
+        if (q.ly < 1) return null;                    /* ceinture du bas */
+        const { face, x, y, ly } = q;
+        if (T === "tshirt" || T === "longues") {
+          if (face === "front" && y === 0 && x >= 3 && x <= 4) return null;               /* col rond */
+          if ((face === "front" || face === "back") && y === 0 && (x === 2 || x === 5)) return { c: lite(topC, .22), m: "top2" };
+          if (face === "front" && y === 1 && x >= 3 && x <= 4) return { c: lite(topC, .22), m: "top2" };
+          if (ly === 1) return { c: dark(topC, .88), m: "top" };
+          return C;
+        }
+        if (T === "hoodie") {
+          if (ly <= 2) return { c: dark(topC, RIB), m: "top2", k: (x % 2) ? .95 : 1 };   /* bas côtelé */
+          if (face === "front") {
+            if (y === 0 && x >= 2 && x <= 5) return { c: dark(topC, .78), m: "top2" };   /* col */
+            if ((x === 2 || x === 5) && y >= 1 && y <= 4) return { c: WHITE, m: "detail" }; /* cordons */
+            if (y >= 6 && y <= 8 && x >= 1 && x <= 6) {                                   /* poche */
+              if (y === 6 || x === 1 || x === 6) return { c: dark(topC, .78), m: "top2" };
+              return { c: mul(topC, .96), m: "top2" };
+            }
+          }
+          return C;
+        }
+        if (T === "chemise") {
+          if (face === "front") {
+            if (y <= 1 && (x === 2 || x === 5)) return { c: lite(topC, .55), m: "top2" };    /* col */
+            if (y === 0 && (x === 3 || x === 4)) return null;
+            if (x === 3) return { c: dark(topC, .86), m: "top2" };                          /* patte */
+            if (x === 4) return y % 3 === 1 ? { c: lite(topC, .7), m: "detail" } : { c: dark(topC, .86), m: "top2" };
+            if (x === 6 && (y === 2 || y === 3)) return { c: dark(topC, .82), m: "top2" };  /* poche */
+          }
+          if (ly === 1) return { c: dark(topC, .88), m: "top" };
+          return C;
+        }
+        if (T === "raye") {
+          if (ly <= 1) return { c: dark(topC, RIB), m: "top2" };
+          if (face === "front" && y === 0 && x >= 3 && x <= 4) return { c: dark(topC, RIB), m: "top2" };
+          return stripe(ly);
+        }
         if (T === "debardeur") {
-          if (q.face === "right" || q.face === "left") { if (q.y <= 2) return null; }
-          if ((q.face === "front" || q.face === "back") && q.y <= 1 && (q.x <= 1 || q.x >= 6)) return null;
-          if (q.face === "front" && q.y === 0 && q.x >= 3 && q.x <= 4) return null;
+          if (face === "right" || face === "left") { if (y <= 3) return null; }
+          if ((face === "front" || face === "back") && y <= 1 && (x <= 1 || x >= 6)) return null;
+          if (face === "front" && y <= 1 && x >= 3 && x <= 4) return null;
+          if (face === "front" && y === 2 && x >= 3 && x <= 4) return { c: lite(topC, .2), m: "top2" };
+          return C;
         }
-        if (q.ly === 1 && T !== "debardeur") c = mul(c, .86);   /* ourlet */
-        return { c, grain: .05 };
+        return C;
       }
       /* bras */
-      const sleeves = { tshirt: 4, debardeur: 0, longues: 10, hoodie: 10, chemise: 10, raye: 10 }[T] ?? 4;
-      if (q.face === "top" && sleeves > 0) return { c: topC, grain: .05 };
-      if (q.side && q.ly >= 12 - sleeves) {
-        let c = topC;
-        if (T === "raye") c = (q.ly % 3 === 0) ? mul(topC, .55) : ((q.ly % 3 === 1) ? topC : mix(topC, [255, 255, 255], .5));
-        if (q.ly === 12 - sleeves) c = mul(c, .82);   /* poignet / ourlet */
-        return { c, grain: .05 };
+      const sl = { tshirt: 4, debardeur: 0, longues: 11, hoodie: 11, chemise: 11, raye: 11 }[T] ?? 4;
+      if (sl === 0) return null;
+      if (q.face === "top") return stripe0();
+      if (q.face === "bottom") return null;
+      if (q.ly < 12 - sl) return null;
+      const cuffRow = q.ly === 12 - sl;
+      if (T === "hoodie" && q.ly <= 2) return { c: dark(topC, RIB), m: "top2", k: (q.x % 2) ? .95 : 1 };
+      if (T === "raye") return q.ly <= 1 ? { c: dark(topC, RIB), m: "top2" } : stripe(q.ly);
+      if (T === "chemise" && q.ly === 1) return { c: lite(topC, .4), m: "top2" };
+      if (T === "tshirt" && cuffRow) return { c: dark(topC, .88), m: "top" };
+      return C;
+      function stripe0() { return T === "raye" ? { c: topC, m: "top" } : C; }
+    }
+    function jacketAt(q) {
+      if (L.top.style !== "veste") return null;
+      const onBody = q.part === "body", onArm = q.part === "rarm" || q.part === "larm";
+      if (q.face === "bottom") return null;
+      if (onBody) {
+        if (q.face === "top") return { c: topC, m: "top" };
+        if (q.face === "front" && (q.x === 3 || q.x === 4)) return null;                 /* ouverte */
+        if (q.face === "front" && q.y <= 3 && (q.x === 2 || q.x === 5)) return { c: lite(topC, .18), m: "top2" };   /* revers */
+        if (q.face === "front" && q.y === 7 && (q.x === 1 || q.x === 6)) return { c: dark(topC, .8), m: "top2" };  /* poches */
+        if (q.ly === 0) return { c: dark(topC, .85), m: "top" };
+        return { c: topC, m: "top" };
+      }
+      if (onArm) {
+        if (q.face === "top") return { c: topC, m: "top" };
+        if (q.ly < 1) return null;
+        if (q.ly === 1) return { c: dark(topC, .82), m: "top2" };
+        return { c: topC, m: "top" };
+      }
+      return null;
+    }
+    function hoodAt(q) {
+      if (L.top.style !== "hoodie" || q.part !== "head") return null;
+      const { face, x, y } = q;
+      if (face === "back" && y >= 4) return { c: y === 4 ? dark(topC, .85) : mul(topC, .95), m: "hood" };
+      if ((face === "right" || face === "left") && y >= 6) {
+        const back = face === "right" ? x : 7 - x;
+        if (back >= 3) return { c: mul(topC, .95), m: "hood" };
       }
       return null;
     }
 
-    /* bas ------------------------------------------------------------ */
+    /* ---------- bas ---------- */
     function bottomAt(q) {
       const B = L.bottom.style;
       const onLeg = q.part === "rleg" || q.part === "lleg";
-      if (q.part === "body" && q.ly < 1 && q.side) {
-        /* ceinture */
-        if (B === "jupe") return { c: mul(botC, .9), grain: .04 };
-        return { c: q.face === "front" && (q.x === 3 || q.x === 4) ? [190, 160, 70] : mul(botC, .55), grain: .03 };
+      if (q.part === "body" && q.side && q.ly < 1) {
+        if (B === "jupe") return { c: dark(botC, .9), m: "bot" };
+        if (q.face === "front" && (q.x === 3 || q.x === 4)) return { c: [214, 178, 74], m: "detail" };   /* boucle */
+        return { c: B === "jogging" ? dark(botC, .85) : [58, 42, 30], m: "bot" };
       }
-      if (!onLeg) return null;
-      const outer = (q.part === "rleg" && q.face === "right") || (q.part === "lleg" && q.face === "left");
-      if (B === "short") { if (q.ly < 7) return null; }
-      if (B === "jupe") return null;
+      if (!onLeg || B === "jupe") return null;
       if (q.face === "bottom") return null;
-      let c = botC;
-      if (B === "jean" && q.side && q.face !== "back" && q.x === (q.part === "rleg" ? 0 : q.w - 1) && q.face === "front") c = mul(botC, 1.18);
-      if (B === "jogging" && outer && q.x === 1) c = [236, 236, 236];
-      if (B === "cargo" && outer && q.ly >= 5 && q.ly <= 7) c = mul(botC, q.ly === 7 ? .78 : .9);
-      if (B === "short" && q.ly === 7) c = mul(c, .82);
-      if (q.ly === 11 && q.face === "front") c = mul(c, .92);
-      return { c, grain: B === "jean" ? .1 : .05 };
+      if (q.face === "top") return { c: botC, m: "bot" };
+      if (B === "short" && q.ly < 7) return null;
+      const outer = (q.part === "rleg" && q.face === "right") || (q.part === "lleg" && q.face === "left");
+      const inner = (q.part === "rleg" && q.face === "left") || (q.part === "lleg" && q.face === "right");
+      let col = botC, m = "bot";
+      if (B === "jean") {
+        if ((q.x + q.ly) % 4 === 0) col = mul(botC, 1.03);                              /* sergé discret */
+        if ((outer || inner) && q.x === 1) col = lite(botC, .14);                      /* couture */
+        if (q.ly === 2) { col = lite(botC, .1); m = "bot"; }                           /* revers */
+      }
+      if (B === "jogging") {
+        if (outer && q.x === 1) col = WHITE;
+        if (q.ly === 2) col = dark(botC, RIB);
+      }
+      if (B === "cargo") {
+        if (outer && q.ly >= 4 && q.ly <= 7) col = q.ly === 7 ? dark(botC, .78) : (q.x === 0 || q.x === 3) ? dark(botC, .85) : mul(botC, 1.04);
+        if (q.ly === 2) col = dark(botC, .88);
+      }
+      if (B === "short" && q.ly === 7) col = dark(botC, .85);
+      return { c: col, m };
     }
-    function bottomOver(q) {
+    function skirtAt(q) {
+      if (L.bottom.style !== "jupe") return null;
       const onLeg = q.part === "rleg" || q.part === "lleg";
-      if (L.bottom.style !== "jupe" || !onLeg || q.face === "bottom") return null;
-      if (q.face === "top") return { c: botC };
-      if (q.ly >= 6) return { c: q.ly === 6 ? mul(botC, .8) : (q.ly % 2 ? botC : mul(botC, .93)), grain: .04 };
-      return null;
+      if (!onLeg || q.face === "bottom") return null;
+      if (q.face === "top") return { c: botC, m: "bot" };
+      if (q.ly < 6) return null;
+      if (q.ly === 6) return { c: dark(botC, .8), m: "bot" };
+      return { c: q.x % 2 ? mul(botC, .9) : botC, m: "bot" };   /* plis */
     }
 
-    /* chaussures ------------------------------------------------------ */
+    /* ---------- chaussures ---------- */
     function shoesAt(q) {
       const onLeg = q.part === "rleg" || q.part === "lleg";
       if (!onLeg) return null;
       const S = L.shoes.style;
-      if (S === "nus") return q.face === "bottom" ? { c: mul(skinC, .9) } : null;
-      if (q.face === "bottom") return { c: S === "baskets" ? [200, 200, 200] : mul(shoeC, .6) };
+      if (S === "nus") return q.face === "bottom" ? { c: mul(skinC, .88), m: "skin" } : null;
+      if (q.face === "bottom") return { c: S === "baskets" ? [186, 186, 190] : dark(shoeC, .55), m: "shoe" };
+      if (!q.side) return null;
       const h = { baskets: 2, bottes: 4, ville: 2 }[S] || 2;
-      if (!q.side || q.ly >= h) return null;
+      if (q.ly >= h) return null;
       if (S === "baskets") {
-        if (q.ly === 0) return { c: [214, 214, 214], grain: .02 };
-        return { c: (q.face === "right" || q.face === "left") && q.x >= 1 && q.x <= 2 ? mul(shoeC, .82) : shoeC, grain: .03 };
+        if (q.ly === 0) return { c: q.face === "front" ? [226, 226, 228] : [210, 210, 214], m: "shoe" };   /* semelle */
+        if (q.face === "front" && (q.x === 1 || q.x === 2)) return { c: shoeC === WHITE ? [190, 190, 196] : WHITE, m: "detail" };  /* lacets */
+        const outer = (q.part === "rleg" && q.face === "right") || (q.part === "lleg" && q.face === "left");
+        if (outer && q.x >= 1 && q.x <= 2) return { c: L.shoes.color.toLowerCase() === "#efefef" ? topC : lite(shoeC, .35), m: "detail" };
+        return { c: shoeC, m: "shoe" };
       }
-      if (S === "bottes") return { c: q.ly === h - 1 ? mul(shoeC, .8) : shoeC, grain: .08 };
-      return { c: q.ly === 0 ? mul(shoeC, .65) : shoeC, grain: .04 };
+      if (S === "bottes") {
+        if (q.ly === 0) return { c: dark(shoeC, .55), m: "shoe" };
+        if (q.ly === h - 1) return { c: lite(shoeC, .12), m: "shoe" };   /* revers */
+        return { c: shoeC, m: "shoe", k: q.face === "front" && q.x === 1 && q.ly === 1 ? 1.15 : 1 };
+      }
+      if (q.ly === 0) return { c: dark(shoeC, .55), m: "shoe" };
+      return { c: shoeC, m: "shoe", k: q.face === "front" && q.x === 1 ? 1.25 : 1 };   /* reflet du cuir */
     }
 
-    /* accessoires ------------------------------------------------------ */
+    /* ---------- accessoires ---------- */
     function accAt(q) {
       const A = L.acc.style;
       if (A === "aucun") return null;
-      if (q.part === "head" && q.layer === "over") {
-        const { face, x, y } = q;
+      const { part, face, x, y, layer } = q;
+      if (part === "head" && layer === "over") {
         if (A === "lunettes" || A === "soleil") {
-          const rim = A === "soleil" ? [24, 24, 26] : mul(accC, .9);
+          const rim = A === "soleil" ? [26, 26, 30] : dark(accC, .8);
           if (face === "front" && y === 4) {
-            if (A === "soleil" && (x >= 1 && x <= 2 || x >= 5 && x <= 6)) return { c: [30, 30, 36], grain: 0 };
-            if (x === 0 || x === 3 || x === 4 || x === 7) return { c: rim, grain: 0 };
+            if (A === "soleil" && (x === 1 || x === 2 || x === 5 || x === 6)) return { c: x === 1 || x === 5 ? [70, 76, 96] : [34, 36, 46], m: "acc" };
+            if (x === 0 || x === 3 || x === 4 || x === 7) return { c: rim, m: "acc" };
           }
-          if (face === "front" && y === 3 && x >= 0 && x <= 7 && x !== 3 && x !== 4 && A === "lunettes") return { c: rim, grain: 0 };
-          if ((face === "right" || face === "left") && y === 4) return { c: rim, grain: 0 };
+          if (face === "front" && y === 3 && A === "lunettes" && x !== 3 && x !== 4) return { c: rim, m: "acc" };
+          if ((face === "right" || face === "left") && y === 4) return { c: rim, m: "acc" };
           return null;
         }
         if (A === "casquette") {
-          if (face === "top") return { c: accC, grain: .05 };
-          if (face !== "bottom" && y <= 1) return { c: y === 1 ? mul(accC, .85) : accC, grain: .05 };
-          if (face === "front" && y === 2) return { c: mul(accC, .7), grain: 0 };   /* visière */
+          if (face === "top") return { c: (x === 3 || x === 4) ? dark(accC, .85) : accC, m: "acc" };
+          if (face === "bottom") return null;
+          if (y <= 1) return { c: y === 1 ? dark(accC, .85) : accC, m: "acc" };
+          if (face === "front" && y === 2) return { c: dark(accC, .65), m: "acc" };
           return null;
         }
-        if (A === "bandeau") {
-          if (face !== "top" && face !== "bottom" && y === 1) return { c: accC, grain: .04 };
-          return null;
-        }
+        if (A === "bandeau") return (face !== "top" && face !== "bottom" && y === 1) ? { c: accC, m: "acc" } : null;
         if (A === "casque") {
-          if (face === "top" && (x === 0 || x === 7 || y === 3 || y === 4)) return { c: [40, 40, 44], grain: 0 };
-          if ((face === "right" || face === "left") && y >= 3 && y <= 6 && x >= 2 && x <= 5) return { c: (y === 3 || y === 6 || x === 2 || x === 5) ? [40, 40, 44] : accC, grain: .02 };
-          if ((face === "right" || face === "left") && y <= 2 && x >= 3 && x <= 4) return { c: [40, 40, 44], grain: 0 };
+          const band = [44, 44, 50];
+          if (face === "top" && (y === 3 || y === 4)) return { c: band, m: "acc" };
+          if ((face === "right" || face === "left") && y <= 2 && (x === 3 || x === 4)) return { c: band, m: "acc" };
+          if ((face === "right" || face === "left") && y >= 3 && y <= 6 && x >= 2 && x <= 5)
+            return { c: (y === 3 || y === 6 || x === 2 || x === 5) ? band : accC, m: "acc" };
           return null;
         }
         return null;
       }
-      if (A === "echarpe" && q.part === "body" && q.layer === "over") {
-        if (q.side && q.ly >= 10) return { c: q.ly === 10 ? mul(accC, .85) : accC, grain: .06 };
-        if (q.face === "front" && q.x >= 1 && q.x <= 2 && q.ly >= 5) return { c: q.ly === 5 ? mul(accC, .85) : accC, grain: .06 };
-        if (q.face === "top") return { c: accC };
+      if (A === "echarpe" && part === "body" && layer === "over") {
+        if (face === "top") return { c: accC, m: "acc" };
+        if (q.side && q.ly >= 10) return { c: q.ly === 10 ? dark(accC, .85) : accC, m: "acc" };
+        if (face === "front" && (x === 1 || x === 2) && q.ly >= 4) return { c: q.ly === 4 ? dark(accC, .8) : accC, m: "acc" };
       }
       return null;
     }
@@ -461,16 +578,17 @@
     {
       id: "tophat", name: "Haut-de-forme SUNRISE", slot: "head",
       desc: "Le grand classique, avec son ruban couleur lever de soleil.",
-      tilt: [-6, 0, 4],
+      /* pivot = centre du bord, posé autour du haut du crâne (la tête va de y=0 à 8) */
+      pivot: [0, 6.7, 0], tilt: [-4, 0, 3],
       parts: [
-        /* bord */            { from: [-6.5, 8.6, -6.5], to: [6.5, 9.6, 6.5], color: "#1c1c21" },
-        /* bord (dessus)  */  { from: [-6, 9.6, -6], to: [6, 9.85, 6], color: "#26262c" },
-        /* calotte */         { from: [-4.4, 9.6, -4.4], to: [4.4, 16.6, 4.4], color: "#202026" },
-        /* ruban */           { from: [-4.55, 9.85, -4.55], to: [4.55, 11.6, 4.55], color: "#f08a24" },
-        /* liseré ruban */    { from: [-4.6, 11.6, -4.6], to: [4.6, 11.85, 4.6], color: "#ffd84a" },
-        /* boucle */          { from: [-1.3, 9.95, 4.55], to: [1.3, 11.5, 4.85], color: "#ffd84a" },
-        /* centre boucle */   { from: [-0.55, 10.4, 4.6], to: [0.55, 11.05, 4.9], color: "#1c1c21" },
-        /* dessus */          { from: [-4.2, 16.6, -4.2], to: [4.2, 16.85, 4.2], color: "#2b2b33" },
+        /* bord */            { from: [-6.5, -0.45, -6.5], to: [6.5, 0.4, 6.5], color: "#1d1d22" },
+        /* bord, dessus */    { from: [-6.2, 0.4, -6.2], to: [6.2, 0.55, 6.2], color: "#27272e" },
+        /* calotte */         { from: [-4.75, 0.4, -4.75], to: [4.75, 6.5, 4.75], color: "#212127" },
+        /* ruban */           { from: [-4.85, 0.55, -4.85], to: [4.85, 2.0, 4.85], color: "#f08a24" },
+        /* liseré */          { from: [-4.9, 2.0, -4.9], to: [4.9, 2.25, 4.9], color: "#ffd84a" },
+        /* boucle */          { from: [-1.3, 0.7, 4.85], to: [1.3, 1.85, 5.1], color: "#ffd84a" },
+        /* centre boucle */   { from: [-0.55, 1.0, 4.9], to: [0.55, 1.55, 5.15], color: "#1d1d22" },
+        /* dessus */          { from: [-4.55, 6.5, -4.55], to: [4.55, 6.75, 4.55], color: "#2c2c34" },
       ],
     },
   ];
@@ -502,6 +620,7 @@
         m.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
         root.add(m);
       }
+      if (def.pivot) root.position.set(def.pivot[0], def.pivot[1], def.pivot[2]);
       if (def.tilt) root.rotation.set(def.tilt[0] * Math.PI / 180, def.tilt[1] * Math.PI / 180, def.tilt[2] * Math.PI / 180);
       return root;
     }
