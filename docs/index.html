@@ -274,7 +274,7 @@ footer { border-top: 1px solid var(--line); padding: 54px 0 40px; color: var(--f
     </div>
     <div class="trio">
       <article class="card feat-card reveal">
-        <div class="txt"><span class="tag">Cosmétiques</span><h3>Des chapeaux en 3D</h3><p>Gratuits et pour tout le monde. Bientôt visibles en jeu par les autres joueurs SUNRISE.</p></div>
+        <div class="txt"><span class="tag">Cosmétiques</span><h3>37 cosmétiques 3D</h3><p>Chapeaux, couronne, ailes de dragon, jetpack, compagnons… gratuits, plus tes cosmétiques LabyMod.</p></div>
         <div class="shot"><img src="assets/shots/cosmetics.webp" width="1280" height="800" alt="Cosmétiques" loading="lazy"></div>
       </article>
       <article class="card feat-card reveal" style="--d:80ms">
@@ -428,7 +428,7 @@ document.querySelectorAll(".reveal").forEach((n) => io.observe(n));
   let started = false, viewer = null, hat = true;
   el("hat-toggle").addEventListener("click", (e) => {
     hat = !hat; e.currentTarget.classList.toggle("on", hat);
-    if (viewer) { viewer.__cosmOverride = hat ? ["tophat"] : []; window.SunriseCosmetics?.refresh(viewer); }
+    if (viewer) { viewer.__cosmOverride = hat ? ["b_sunrise_tophat"] : []; window.SunriseCosmetics?.refresh(viewer); }
   });
   const start = async () => {
     if (started) return; started = true;
@@ -443,7 +443,7 @@ document.querySelectorAll(".reveal").forEach((n) => io.observe(n));
       const az = Math.atan2(c.x - t.x, c.z - t.z) - 35 * d, pol = Math.acos((c.y - t.y) / r) - 8 * d;
       c.set(t.x + r * Math.sin(pol) * Math.sin(az), t.y + r * Math.cos(pol), t.z + r * Math.sin(pol) * Math.cos(az)); v.controls.update();
       SunriseAnim.attach(v, { headTrack: false });
-      v.__cosmOverride = hat ? ["tophat"] : [];
+      v.__cosmOverride = hat ? ["b_sunrise_tophat"] : [];
       window.SunriseCosmetics?.attach(v);
       await v.loadSkin("assets/skin3d/skin.png");
       host.classList.add("live");

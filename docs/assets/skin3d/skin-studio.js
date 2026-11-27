@@ -79,7 +79,7 @@
   }
   const loadImg = (src) => new Promise((ok, ko) => { const i = new Image(); i.onload = () => ok(i); i.onerror = ko; i.src = src; });
   /* une page de skins MineSkin, seulement les skins complets (textures chargées) */
-  async function fullSkinsPage(filter, after, alive = () => true) {
+  async function fullSkinsPage(filter, after, alive = () => true, onItem = null) {
     const A = api();
     if (!A?.skinsList) return { ok: false, error: "Disponible dans le launcher.", items: [], after: false };
     const r = await A.skinsList({ after: after || "", filter, size: 30 });
@@ -97,10 +97,11 @@
           if (!isFullSkin(img)) continue;
           SRC.set(s.texture, img);
           out[k] = { ...s, data: t.data, img, slim: img.height === 64 && isSlimImage(img) };
+          onItem?.(out[k]);
         } catch (_) {}
       }
     };
-    await Promise.all(Array.from({ length: 6 }, worker));
+    await Promise.all(Array.from({ length: 12 }, worker));
     return { ok: true, items: out.filter(Boolean), after: r.after || false };
   }
 
@@ -654,74 +655,375 @@
      (origine au cou, +y vers le haut, +z vers l'avant). Même format
      pour le launcher (Three.js) et le mod en jeu.
      ================================================================ */
-  const COSMETICS = [
-    {
-      id: "tophat", name: "Haut-de-forme SUNRISE", slot: "head",
-      desc: "Le grand classique, avec son ruban couleur lever de soleil.",
-      /* pivot = centre du bord, posé autour du haut du crâne (la tête va de y=0 à 8) */
-      pivot: [0, 6.7, 0], tilt: [-4, 0, 3],
-      parts: [
-        /* bord */            { from: [-6.5, -0.45, -6.5], to: [6.5, 0.4, 6.5], color: "#1d1d22" },
-        /* bord, dessus */    { from: [-6.2, 0.4, -6.2], to: [6.2, 0.55, 6.2], color: "#27272e" },
-        /* calotte */         { from: [-4.75, 0.4, -4.75], to: [4.75, 6.5, 4.75], color: "#212127" },
-        /* ruban */           { from: [-4.85, 0.55, -4.85], to: [4.85, 2.0, 4.85], color: "#f08a24" },
-        /* liseré */          { from: [-4.9, 2.0, -4.9], to: [4.9, 2.25, 4.9], color: "#ffd84a" },
-        /* boucle */          { from: [-1.3, 0.7, 4.85], to: [1.3, 1.85, 5.1], color: "#ffd84a" },
-        /* centre boucle */   { from: [-0.55, 1.0, 4.9], to: [0.55, 1.55, 5.15], color: "#1d1d22" },
-        /* dessus */          { from: [-4.55, 6.5, -4.55], to: [4.55, 6.75, 4.55], color: "#2c2c34" },
-      ],
-    },
+  /* ---------- catalogue libre : modèles originaux de MC-RENDER (Yutsi), format Bedrock ---------- */
+  const mrMeta = (id, name, category, attachedTo, position = "", extra = {}) => ({ id: "b_" + id, name, category, attachedTo, position, scale: 1, type: "COSMETIC", ...extra });
+  const MCR_COSMETICS = [
+    { meta: mrMeta('crown', 'Couronne royale', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#f5c518', '#d99a00', '#e8384f', '#3b82f6'],
+      bones: [{ name: 'crown', cubes: [
+        { o: [-4.5, 8, -4.5], s: [9, 2, 1], c: 0 }, { o: [-4.5, 8, 3.5], s: [9, 2, 1], c: 0 }, { o: [-4.5, 8, -3.5], s: [1, 2, 7], c: 1 }, { o: [3.5, 8, -3.5], s: [1, 2, 7], c: 1 },
+        { o: [-4.5, 10, -4.5], s: [1, 2, 1], c: 0 }, { o: [3.5, 10, -4.5], s: [1, 2, 1], c: 0 }, { o: [-0.5, 10, -4.5], s: [1, 2, 1], c: 0 },
+        { o: [-4.5, 10, 3.5], s: [1, 2, 1], c: 0 }, { o: [3.5, 10, 3.5], s: [1, 2, 1], c: 0 }, { o: [-0.5, 10, 3.5], s: [1, 2, 1], c: 0 },
+        { o: [-1, 8.5, -4.8], s: [2, 1, 1], c: 2 }, { o: [-1, 8.5, 3.8], s: [2, 1, 1], c: 3 }] }] },
+    { meta: mrMeta('tophat', 'Haut-de-forme', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#1b1b1f', '#2a2a30', '#b0263a'],
+      bones: [{ name: 'hat', cubes: [{ o: [-5.5, 8, -5.5], s: [11, 1, 11], c: 0 }, { o: [-3.5, 9, -3.5], s: [7, 6, 7], c: 1 }, { o: [-3.6, 9, -3.6], s: [7.2, 1.2, 7.2], c: 2 }] }] },
+    { meta: mrMeta('cap', 'Casquette', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#2563eb', '#1e40af', '#f8fafc'],
+      bones: [{ name: 'cap', cubes: [{ o: [-4.3, 7, -4.3], s: [8.6, 2, 8.6], c: 0 }, { o: [-3.5, 9, -3.5], s: [7, 0.8, 7], c: 1 }, { o: [-4, 7, -8.5], s: [8, 0.6, 4.4], c: 1 }, { o: [-0.5, 9.6, -0.5], s: [1, 0.5, 1], c: 2 }] }] },
+    { meta: mrMeta('wizard', 'Chapeau de mage', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#4c1d95', '#6d28d9', '#facc15'],
+      bones: [
+        { name: 'brim', cubes: [{ o: [-6, 8, -6], s: [12, 1, 12], c: 0 }, { o: [-4, 9, -4], s: [8, 3, 8], c: 1 }, { o: [-4.1, 9, -4.1], s: [8.2, 1, 8.2], c: 2 }] },
+        { name: 'tip', pivot: [0, 12, 0], rotation: [-8, 0, 6], cubes: [{ o: [-3, 12, -3], s: [6, 3, 6], c: 1 }, { o: [-2, 15, -1.5], s: [4, 3, 4], c: 0 }, { o: [-1, 18, 0], s: [2, 2, 2], c: 1 }] }] },
+    { meta: mrMeta('halo', 'Auréole', 'HEADGEAR', 'HEAD', 'HEAD_TOP'), palette: ['#fff3b0'],
+      bones: [{ name: 'glow_halo', cubes: [
+        { o: [-4, 11, -5], s: [8, 0.8, 1], c: 0 }, { o: [-4, 11, 4], s: [8, 0.8, 1], c: 0 }, { o: [-5, 11, -4], s: [1, 0.8, 8], c: 0 }, { o: [4, 11, -4], s: [1, 0.8, 8], c: 0 }] }] },
+    { meta: mrMeta('horns', 'Cornes de démon', 'HEADGEAR', 'HEAD', 'HEAD_TOP'), palette: ['#7f1d1d', '#b91c1c', '#1f1f1f'],
+      bones: [
+        { name: 'horn_r', pivot: [-3, 8, 0], rotation: [0, 0, 20], cubes: [{ o: [-4, 8, -1], s: [2, 3, 2], c: 1 }, { o: [-3.8, 11, -0.8], s: [1.6, 2, 1.6], c: 0 }, { o: [-3.5, 13, -0.5], s: [1, 1.5, 1], c: 2 }] },
+        { name: 'horn_l', pivot: [3, 8, 0], rotation: [0, 0, -20], cubes: [{ o: [2, 8, -1], s: [2, 3, 2], c: 1 }, { o: [2.2, 11, -0.8], s: [1.6, 2, 1.6], c: 0 }, { o: [2.5, 13, -0.5], s: [1, 1.5, 1], c: 2 }] }] },
+    { meta: mrMeta('catears', 'Oreilles de chat', 'HEADGEAR', 'HEAD', 'HEAD_TOP'), palette: ['#2b2b2b', '#f9a8d4'],
+      bones: [{ name: 'ears', cubes: [{ o: [-4, 8, -1], s: [3, 3, 1], c: 0 }, { o: [1, 8, -1], s: [3, 3, 1], c: 0 }, { o: [-3.5, 8.5, -1.3], s: [2, 2, 0.4], c: 1 }, { o: [1.5, 8.5, -1.3], s: [2, 2, 0.4], c: 1 }] }] },
+    { meta: mrMeta('shades', 'Lunettes de soleil', 'FACE', 'HEAD', 'FACE'), palette: ['#111111', '#2b2b2b'],
+      bones: [{ name: 'shades', cubes: [{ o: [-4.2, 4, -4.6], s: [3.4, 1.6, 0.4], c: 0 }, { o: [0.8, 4, -4.6], s: [3.4, 1.6, 0.4], c: 0 }, { o: [-0.8, 4.8, -4.6], s: [1.6, 0.5, 0.4], c: 1 }, { o: [-4.6, 4.8, -4.6], s: [0.4, 0.5, 4], c: 1 }, { o: [4.2, 4.8, -4.6], s: [0.4, 0.5, 4], c: 1 }] }] },
+    { meta: mrMeta('angelwings', 'Ailes d\'ange', 'WING', 'BODY', 'BACK'), palette: ['#ffffff', '#eef2f7', '#d7dee8', '#c3ccd8'],
+      bones: [
+        { name: 'wing_r', pivot: [-1, -2, 2], rotation: [12, -38, -8], cubes: [
+          { o: [-9, -4, 2], s: [8, 3, 1], c: 0 }, { o: [-13, -6, 2.2], s: [12, 3, 0.8], c: 1 }, { o: [-16, -9, 2.4], s: [14, 3, 0.7], c: 2 },
+          { o: [-17, -12, 2.6], s: [13, 3, 0.6], c: 3 }, { o: [-17, -15, 2.7], s: [9, 3, 0.5], c: 2 }, { o: [-16, -17, 2.8], s: [5, 2, 0.5], c: 3 }] },
+        { name: 'wing_l', pivot: [1, -2, 2], rotation: [12, 38, 8], cubes: [
+          { o: [1, -4, 2], s: [8, 3, 1], c: 0 }, { o: [1, -6, 2.2], s: [12, 3, 0.8], c: 1 }, { o: [2, -9, 2.4], s: [14, 3, 0.7], c: 2 },
+          { o: [4, -12, 2.6], s: [13, 3, 0.6], c: 3 }, { o: [8, -15, 2.7], s: [9, 3, 0.5], c: 2 }, { o: [11, -17, 2.8], s: [5, 2, 0.5], c: 3 }] }] },
+    { meta: mrMeta('dragonwings', 'Ailes de dragon', 'WING', 'BODY', 'BACK'), palette: ['#3b0a45', '#7e22ce', '#1e1b2e'],
+      bones: [
+        { name: 'wing_r', pivot: [-1, -3, 2], rotation: [10, -30, 10], cubes: [{ o: [-16, -4, 2], s: [15, 1, 1], c: 2 }, { o: [-15, -13, 2.2], s: [14, 9, 0.4], c: 0 }, { o: [-18, -11, 2.2], s: [3, 7, 0.4], c: 1 }] },
+        { name: 'wing_l', pivot: [1, -3, 2], rotation: [10, 30, -10], cubes: [{ o: [1, -4, 2], s: [15, 1, 1], c: 2 }, { o: [1, -13, 2.2], s: [14, 9, 0.4], c: 0 }, { o: [15, -11, 2.2], s: [3, 7, 0.4], c: 1 }] }] },
+    { meta: mrMeta('backpack', 'Sac à dos', 'BACK', 'BODY', 'BACK'), palette: ['#9a5b2a', '#6b3d1a', '#d1a054'],
+      bones: [{ name: 'bag', cubes: [{ o: [-3.5, -10, 2], s: [7, 8, 3], c: 0 }, { o: [-3, -6, 5], s: [6, 3, 1], c: 1 }, { o: [-0.5, -5, 5.8], s: [1, 1, 0.4], c: 2 }, { o: [-3.5, -2.5, 2], s: [7, 1, 3], c: 1 }] }] },
+    { meta: mrMeta('scarf', 'Écharpe', 'LANYARD', 'BODY', 'CHEST'), palette: ['#dc2626', '#f8fafc'],
+      bones: [{ name: 'scarf', cubes: [{ o: [-4.5, -2, -2.5], s: [9, 2, 5], c: 0 }, { o: [1, -7, -2.8], s: [2, 5, 1], c: 0 }, { o: [1, -7.5, -2.8], s: [2, 0.6, 1], c: 1 }] }] },
+    { meta: mrMeta('aura', 'Aura magique', 'AURA', 'BODY', 'BODY'), palette: ['#a855f7', '#22d3ee'],
+      bones: [{ name: 'glow_aura', cubes: [
+        { o: [-7, -10, -1], s: [1, 1, 1], c: 0 }, { o: [6, -4, 2], s: [1, 1, 1], c: 1 }, { o: [-6, 2, 3], s: [1, 1, 1], c: 1 }, { o: [5, -14, -3], s: [1, 1, 1], c: 0 },
+        { o: [-3, -20, 4], s: [1, 1, 1], c: 0 }, { o: [7, -18, 0], s: [1, 1, 1], c: 1 }, { o: [-8, -16, -3], s: [1, 1, 1], c: 1 }, { o: [2, 4, -4], s: [1, 1, 1], c: 0 }] }] },
+    { meta: mrMeta('bee', 'Abeille compagnon', 'PETS', 'BODY', 'SHOULDER', { type: 'SHOULDER_PET' }), palette: ['#facc15', '#1f1f1f', '#e0f2fe'],
+      bones: [{ name: 'bee', cubes: [{ o: [-2, 1, -2], s: [4, 3, 5], c: 0 }, { o: [-2.05, 1, 0], s: [4.1, 3.05, 1], c: 1 }, { o: [-1.5, 4, -1], s: [1, 0.4, 3], c: 2 }, { o: [0.5, 4, -1], s: [1, 0.4, 3], c: 2 }] }] },
+    // ---------- chapeaux
+    { meta: mrMeta('beanie', 'Bonnet', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#e11d48', '#f8fafc', '#be123c'],
+      bones: [{ name: 'beanie', cubes: [{ o: [-4.5, 6, -4.5], s: [9, 2, 9], c: 1 }, { o: [-4.2, 8, -4.2], s: [8.4, 2, 8.4], c: 0 }, { o: [-3.5, 10, -3.5], s: [7, 1, 7], c: 2 }, { o: [-1.5, 11, -1.5], s: [3, 2, 3], c: 1 }] }] },
+    { meta: mrMeta('cowboy', 'Chapeau de cowboy', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#8b5a2b', '#6b4220', '#3f2a14'],
+      bones: [{ name: 'cowboy', cubes: [{ o: [-7, 8, -6], s: [14, 1, 12], c: 0 }, { o: [-7, 9, -6], s: [2, 1, 12], c: 0 }, { o: [5, 9, -6], s: [2, 1, 12], c: 0 },
+        { o: [-4, 9, -4], s: [8, 4, 8], c: 1 }, { o: [-4.1, 9, -4.1], s: [8.2, 1, 8.2], c: 2 }, { o: [-1, 12.6, -4], s: [2, 0.6, 8], c: 0 }] }] },
+    { meta: mrMeta('chef', 'Toque de chef', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#ffffff', '#e5e7eb'],
+      bones: [{ name: 'chef', cubes: [{ o: [-4.3, 8, -4.3], s: [8.6, 3, 8.6], c: 1 }, { o: [-5, 11, -5], s: [10, 4, 10], c: 0 }, { o: [-4, 15, -4], s: [8, 1, 8], c: 0 }] }] },
+    { meta: mrMeta('pirate', 'Bicorne de pirate', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#111827', '#facc15', '#f8fafc'],
+      bones: [{ name: 'pirate', cubes: [{ o: [-6, 8, -2], s: [12, 4, 4], c: 0 }, { o: [-4, 12, -2], s: [8, 2, 4], c: 0 }, { o: [-6, 8, -2.2], s: [12, 0.6, 4.4], c: 1 }, { o: [-1, 10, -2.4], s: [2, 2, 0.4], c: 2 }] }] },
+    { meta: mrMeta('party', 'Chapeau de fête', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#8b5cf6', '#facc15', '#ec4899'],
+      bones: [{ name: 'party', pivot: [0, 8, 0], rotation: [0, 0, 8], cubes: [{ o: [-2.5, 8, -2.5], s: [5, 2, 5], c: 0 }, { o: [-2, 10, -2], s: [4, 2, 4], c: 1 }, { o: [-1.5, 12, -1.5], s: [3, 2, 3], c: 0 }, { o: [-1, 14, -1], s: [2, 1.5, 2], c: 1 }, { o: [-0.75, 15.5, -0.75], s: [1.5, 1.5, 1.5], c: 2 }] }] },
+    { meta: mrMeta('viking', 'Casque viking', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#9ca3af', '#6b7280', '#f5f5dc'],
+      bones: [
+        { name: 'helm', cubes: [{ o: [-4.5, 5, -4.5], s: [9, 4, 9], c: 0 }, { o: [-3.5, 9, -3.5], s: [7, 1, 7], c: 1 }, { o: [-0.5, 2, -4.8], s: [1, 4, 0.4], c: 1 }] },
+        { name: 'horn_r', pivot: [-4.5, 7, 0], rotation: [0, 0, 25], cubes: [{ o: [-7.5, 6.5, -1], s: [3, 2, 2], c: 2 }, { o: [-8.5, 8.5, -0.75], s: [1.5, 3, 1.5], c: 2 }] },
+        { name: 'horn_l', pivot: [4.5, 7, 0], rotation: [0, 0, -25], cubes: [{ o: [4.5, 6.5, -1], s: [3, 2, 2], c: 2 }, { o: [7, 8.5, -0.75], s: [1.5, 3, 1.5], c: 2 }] }] },
+    { meta: mrMeta('santa', 'Bonnet de Noël', 'HAT', 'HEAD', 'HEAD_TOP'), palette: ['#dc2626', '#ffffff'],
+      bones: [{ name: 'santa', pivot: [0, 9, 0], rotation: [0, 0, -12], cubes: [{ o: [-4.5, 7, -4.5], s: [9, 2, 9], c: 1 }, { o: [-3.8, 9, -3.8], s: [7.6, 3, 7.6], c: 0 }, { o: [-2.5, 12, -2.5], s: [5, 2, 5], c: 0 }, { o: [-1.5, 14, -1.5], s: [3, 2, 3], c: 0 }, { o: [-1.2, 16, -1.2], s: [2.4, 2.4, 2.4], c: 1 }] }] },
+    // ---------- tête
+    { meta: mrMeta('headphones', 'Casque audio', 'HEADGEAR', 'HEAD', 'HEAD_TOP'), palette: ['#1f2937', '#22d3ee', '#374151'],
+      bones: [{ name: 'phones', cubes: [{ o: [-4.6, 8, -1], s: [9.2, 1, 2], c: 0 }, { o: [-5.2, 4, -1], s: [1, 4, 2], c: 2 }, { o: [4.2, 4, -1], s: [1, 4, 2], c: 2 },
+        { o: [-5.6, 2, -2], s: [1.4, 4, 4], c: 0 }, { o: [4.2, 2, -2], s: [1.4, 4, 4], c: 0 }, { o: [-5.8, 2.5, -1.5], s: [0.3, 3, 3], c: 1 }, { o: [5.5, 2.5, -1.5], s: [0.3, 3, 3], c: 1 }] }] },
+    { meta: mrMeta('flowers', 'Couronne de fleurs', 'HEADGEAR', 'HEAD', 'HEAD_TOP'), palette: ['#4d7c0f', '#f472b6', '#facc15', '#ffffff'],
+      bones: [{ name: 'flowers', cubes: [{ o: [-4.4, 8, -4.4], s: [8.8, 0.8, 0.8], c: 0 }, { o: [-4.4, 8, 3.6], s: [8.8, 0.8, 0.8], c: 0 }, { o: [-4.4, 8, -3.6], s: [0.8, 0.8, 7.2], c: 0 }, { o: [3.6, 8, -3.6], s: [0.8, 0.8, 7.2], c: 0 },
+        { o: [-3, 8.3, -4.8], s: [1.5, 1.5, 1], c: 1 }, { o: [0.5, 8.3, -4.8], s: [1.5, 1.5, 1], c: 2 }, { o: [-4.8, 8.3, 0], s: [1, 1.5, 1.5], c: 3 }, { o: [3.8, 8.3, -1], s: [1, 1.5, 1.5], c: 1 }, { o: [-1, 8.3, 3.8], s: [1.5, 1.5, 1], c: 2 }] }] },
+    { meta: mrMeta('bunny', 'Oreilles de lapin', 'HEADGEAR', 'HEAD', 'HEAD_TOP'), palette: ['#f5f5f4', '#fbcfe8'],
+      bones: [
+        { name: 'ear_r', pivot: [-2, 8, 0], rotation: [-10, 0, 8], cubes: [{ o: [-3.5, 8, -0.5], s: [2.5, 7, 1], c: 0 }, { o: [-3, 9, -0.8], s: [1.5, 5, 0.4], c: 1 }] },
+        { name: 'ear_l', pivot: [2, 8, 0], rotation: [-10, 0, -8], cubes: [{ o: [1, 8, -0.5], s: [2.5, 7, 1], c: 0 }, { o: [1.5, 9, -0.8], s: [1.5, 5, 0.4], c: 1 }] }] },
+    { meta: mrMeta('foxears', 'Oreilles de renard', 'HEADGEAR', 'HEAD', 'HEAD_TOP'), palette: ['#ea580c', '#fff7ed', '#1c1917'],
+      bones: [{ name: 'ears', cubes: [{ o: [-4, 8, -0.5], s: [3, 2, 1.5], c: 0 }, { o: [-3.5, 10, -0.5], s: [2, 1.5, 1.5], c: 0 }, { o: [-3, 11.5, -0.5], s: [1, 1, 1.5], c: 2 },
+        { o: [1, 8, -0.5], s: [3, 2, 1.5], c: 0 }, { o: [1.5, 10, -0.5], s: [2, 1.5, 1.5], c: 0 }, { o: [2, 11.5, -0.5], s: [1, 1, 1.5], c: 2 }, { o: [-3.5, 8.3, -0.8], s: [2, 1.5, 0.4], c: 1 }, { o: [1.5, 8.3, -0.8], s: [2, 1.5, 0.4], c: 1 }] }] },
+    { meta: mrMeta('nerd', 'Lunettes rondes', 'FACE', 'HEAD', 'FACE'), palette: ['#292524', '#bae6fd'],
+      bones: [{ name: 'nerd', cubes: [{ o: [-4, 3.5, -4.6], s: [3, 0.5, 0.4], c: 0 }, { o: [-4, 5.5, -4.6], s: [3, 0.5, 0.4], c: 0 }, { o: [-4, 3.5, -4.6], s: [0.5, 2.5, 0.4], c: 0 }, { o: [-1.5, 3.5, -4.6], s: [0.5, 2.5, 0.4], c: 0 },
+        { o: [1, 3.5, -4.6], s: [3, 0.5, 0.4], c: 0 }, { o: [1, 5.5, -4.6], s: [3, 0.5, 0.4], c: 0 }, { o: [1, 3.5, -4.6], s: [0.5, 2.5, 0.4], c: 0 }, { o: [3.5, 3.5, -4.6], s: [0.5, 2.5, 0.4], c: 0 },
+        { o: [-1, 5, -4.6], s: [2, 0.5, 0.4], c: 0 }, { o: [-3.5, 4, -4.5], s: [2, 1.5, 0.2], c: 1 }, { o: [1.5, 4, -4.5], s: [2, 1.5, 0.2], c: 1 }, { o: [-4.6, 5, -4.4], s: [0.4, 0.5, 4], c: 0 }, { o: [4.2, 5, -4.4], s: [0.4, 0.5, 4], c: 0 }] }] },
+    { meta: mrMeta('ninja', 'Bandeau de ninja', 'FACE', 'HEAD', 'FACE'), palette: ['#1e3a8a', '#1e40af'],
+      bones: [{ name: 'band', cubes: [{ o: [-4.3, 5.5, -4.3], s: [8.6, 1.5, 8.6], c: 0 },
+        { o: [-1, 5, 4.3], s: [1, 1, 3], c: 1, r: [30, 15, 0], p: [-0.5, 5.5, 4.3] }, { o: [0, 4.5, 4.3], s: [1, 1, 3.5], c: 1, r: [40, -15, 0], p: [0.5, 5.5, 4.3] }] }] },
+    // ---------- corps
+    { meta: mrMeta('foxtail', 'Queue de renard', 'TAIL', 'BODY', 'BACK'), palette: ['#ea580c', '#fff7ed'],
+      bones: [{ name: 'tail', pivot: [0, -11, 2], rotation: [-35, 0, 0], cubes: [{ o: [-1, -12, 2], s: [2, 2, 3], c: 0 }, { o: [-1.5, -12.5, 5], s: [3, 3, 4], c: 0 }, { o: [-1.25, -12.25, 9], s: [2.5, 2.5, 2], c: 1 }] }] },
+    { meta: mrMeta('swordback', 'Épée dans le dos', 'BACK', 'BODY', 'BACK'), palette: ['#6b7280', '#e5e7eb', '#78350f', '#facc15'],
+      bones: [{ name: 'sword', pivot: [0, -6, 2.5], rotation: [0, 0, 35], cubes: [{ o: [-0.5, -14, 2.2], s: [1, 13, 0.6], c: 1 }, { o: [-2.5, -1, 2], s: [5, 1, 1], c: 3 }, { o: [-0.5, 0, 2.2], s: [1, 4, 0.6], c: 2 }, { o: [-0.75, 4, 2.1], s: [1.5, 1, 0.8], c: 3 }] }] },
+    { meta: mrMeta('jetpack', 'Jetpack', 'BACK', 'BODY', 'BACK'), palette: ['#9ca3af', '#ef4444', '#4b5563', '#f97316'],
+      bones: [
+        { name: 'pack', cubes: [{ o: [-4, -9, 2], s: [3, 7, 3], c: 0 }, { o: [1, -9, 2], s: [3, 7, 3], c: 0 }, { o: [-1, -7, 2], s: [2, 3, 2], c: 2 }, { o: [-4, -3, 2], s: [3, 1, 3], c: 1 }, { o: [1, -3, 2], s: [3, 1, 3], c: 1 }, { o: [-3.5, -10, 2.5], s: [2, 1, 2], c: 2 }, { o: [1.5, -10, 2.5], s: [2, 1, 2], c: 2 }] },
+        { name: 'glow_flame', cubes: [{ o: [-3, -12, 3], s: [1, 2, 1], c: 3 }, { o: [2, -12, 3], s: [1, 2, 1], c: 3 }] }] },
+    { meta: mrMeta('butterfly', 'Ailes de papillon', 'WING', 'BODY', 'BACK'), palette: ['#38bdf8', '#a78bfa', '#1e1b4b'],
+      bones: [
+        { name: 'wing_r', pivot: [-1, -4, 2.2], rotation: [0, -30, 0], cubes: [{ o: [-11, -6, 2.2], s: [10, 8, 0.4], c: 0 }, { o: [-9, -12, 2.2], s: [8, 6, 0.4], c: 1 }, { o: [-11.5, -6.5, 2.1], s: [11, 0.6, 0.6], c: 2 }] },
+        { name: 'wing_l', pivot: [1, -4, 2.2], rotation: [0, 30, 0], cubes: [{ o: [1, -6, 2.2], s: [10, 8, 0.4], c: 0 }, { o: [1, -12, 2.2], s: [8, 6, 0.4], c: 1 }, { o: [0.5, -6.5, 2.1], s: [11, 0.6, 0.6], c: 2 }] }] },
+    { meta: mrMeta('tie', 'Cravate', 'LANYARD', 'BODY', 'CHEST'), palette: ['#1d4ed8', '#1e3a8a'],
+      bones: [{ name: 'tie', cubes: [{ o: [-1, -2, -2.4], s: [2, 1.5, 0.4], c: 1 }, { o: [-0.8, -7, -2.4], s: [1.6, 5, 0.4], c: 0 }, { o: [-0.5, -8, -2.4], s: [1, 1, 0.4], c: 0 }] }] },
+    { meta: mrMeta('medal', 'Médaille d\'or', 'LANYARD', 'BODY', 'CHEST'), palette: ['#dc2626', '#facc15', '#ca8a04'],
+      bones: [{ name: 'medal', cubes: [{ o: [-2.5, -2, -2.3], s: [1, 4, 0.3], c: 0, r: [0, 0, 25], p: [-2, 0, -2.3] }, { o: [1.5, -2, -2.3], s: [1, 4, 0.3], c: 0, r: [0, 0, -25], p: [2, 0, -2.3] }, { o: [-1.5, -6.5, -2.6], s: [3, 3, 0.5], c: 1 }, { o: [-0.5, -5.5, -2.8], s: [1, 1, 0.3], c: 2 }] }] },
+    // ---------- pieds
+    { meta: mrMeta('sneakers', 'Baskets', 'FEET', 'FEET', 'FEET'), palette: ['#f8fafc', '#ef4444', '#1f2937'],
+      bones: [{ name: 'shoe', cubes: [{ o: [-2.3, -12.3, -2.6], s: [4.6, 2, 4.9], c: 0 }, { o: [-2.35, -12.4, -2.7], s: [4.7, 0.6, 5], c: 2 }, { o: [-2.4, -11.6, -1], s: [4.8, 1, 2.5], c: 1 }, { o: [-1.5, -10.4, -2.7], s: [3, 0.4, 0.3], c: 1 }] }] },
+    { meta: mrMeta('boots', 'Bottes de cuir', 'FEET', 'FEET', 'FEET'), palette: ['#7c4a1e', '#5b3714', '#d4a373'],
+      bones: [{ name: 'boot', cubes: [{ o: [-2.3, -12.3, -2.8], s: [4.6, 1.5, 5.1], c: 1 }, { o: [-2.25, -10.8, -2.3], s: [4.5, 5, 4.6], c: 0 }, { o: [-2.4, -6.2, -2.4], s: [4.8, 0.8, 4.8], c: 2 }] }] },
+    // ---------- compagnons
+    { meta: mrMeta('slime', 'Slime flottant', 'PETS', 'BODY', 'SHOULDER', { type: 'FLYING_PET' }), palette: ['#84cc16', '#4d7c0f', '#14532d'],
+      bones: [{ name: 'slime', cubes: [{ o: [-3, 0, -3], s: [6, 6, 6], c: 0 }, { o: [-1.5, 1.5, -1.5], s: [3, 3, 3], c: 1 }, { o: [-2, 3.5, -3.2], s: [1, 1, 0.3], c: 2 }, { o: [1, 3.5, -3.2], s: [1, 1, 0.3], c: 2 }] }] },
+    { meta: mrMeta('parrot', 'Perroquet', 'PETS', 'BODY', 'SHOULDER', { type: 'SHOULDER_PET' }), palette: ['#dc2626', '#facc15', '#2563eb', '#111827'],
+      bones: [{ name: 'parrot', cubes: [{ o: [-1.5, 0, -1.5], s: [3, 4, 3], c: 0 }, { o: [-1, 4, -2], s: [2, 2, 2.5], c: 0 }, { o: [-0.5, 4.5, -3], s: [1, 1, 1], c: 1 },
+        { o: [-1.8, 0.5, -1], s: [0.4, 3, 2], c: 2 }, { o: [1.4, 0.5, -1], s: [0.4, 3, 2], c: 2 }, { o: [-0.5, -1, 1], s: [1, 2, 1], c: 2 }, { o: [-0.9, 5, -2.1], s: [0.3, 0.5, 0.3], c: 3 }, { o: [0.6, 5, -2.1], s: [0.3, 0.5, 0.3], c: 3 }] }] },
   ];
-  const Cosmetics = (() => {
-    const KEY = "sunrise-cosmetics";
-    let equipped = (() => { try { return JSON.parse(localStorage.getItem(KEY) || "[]"); } catch { return []; } })();
-    const viewers = new Set();
+  /* géométrie Bedrock + texture-palette (2×2 px par couleur), comme builtinGeo de MC-RENDER */
+  function paletteGeo(def) {
+    const cell = 2, cols = Math.max(1, def.palette.length);
+    const c = document.createElement("canvas"); c.width = cols * cell; c.height = cell;
+    const g = c.getContext("2d");
+    def.palette.forEach((col, i) => { g.fillStyle = col; g.fillRect(i * cell, 0, cell, cell); });
+    const bones = def.bones.map((b) => ({
+      name: b.name, pivot: b.pivot ?? [0, 0, 0], rotation: b.rotation,
+      cubes: b.cubes.map((cu) => {
+        const uv = {};
+        for (const d of ["north", "south", "east", "west", "up", "down"]) uv[d] = { uv: [cu.c * cell + 0.5, 0.5], uv_size: [1, 1] };
+        return { origin: cu.o, size: cu.s, pivot: cu.p, rotation: cu.r, uv };
+      }),
+    }));
+    return { geo: { "minecraft:geometry": [{ description: { texture_width: cols * cell, texture_height: cell }, bones }] }, texture: c.toDataURL("image/png") };
+  }
 
-    function build(v, def) {
-      const head = v.playerObject.skin.head;
-      const mesh = head.innerLayer || head.children.find((c) => c.geometry);
-      const Mesh = mesh.constructor, Geo = mesh.geometry.constructor;
-      const Mat = (Array.isArray(mesh.material) ? mesh.material[0] : mesh.material).constructor;
-      const Obj = Object.getPrototypeOf(Mesh);   /* Object3D */
-      const root = new Obj();
-      root.name = "cosm-" + def.id;
-      const mats = new Map();
-      for (const p of def.parts) {
-        const [x1, y1, z1] = p.from, [x2, y2, z2] = p.to;
-        const geo = new Geo(x2 - x1, y2 - y1, z2 - z1);
-        let mat = mats.get(p.color);
-        if (!mat) {
-          mat = new Mat({ color: parseInt(p.color.slice(1), 16) });
-          if ("roughness" in mat) mat.roughness = .85;
-          if ("metalness" in mat) mat.metalness = 0;
-          mats.set(p.color, mat);
-        }
-        const m = new Mesh(geo, mat);
-        m.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
-        root.add(m);
+  /* haut-de-forme SUNRISE (format Bedrock : avant = -Z, tête depuis le cou, dessus à y = 8) */
+  const SUNRISE_COSMETICS = [
+    { meta: mrMeta("sunrise_tophat", "Haut-de-forme SUNRISE", "HAT", "HEAD", "HEAD_TOP"), palette: ["#1d1d22", "#27272e", "#212127", "#f08a24", "#ffd84a", "#2c2c34"],
+      bones: [{ name: "hat", pivot: [0, 6.7, 0], cubes: [
+        { o: [-6.5, 6.25, -6.5], s: [13, 0.85, 13], c: 0 }, { o: [-6.2, 7.1, -6.2], s: [12.4, 0.15, 12.4], c: 1 },
+        { o: [-4.75, 7.1, -4.75], s: [9.5, 6.1, 9.5], c: 2 }, { o: [-4.85, 7.25, -4.85], s: [9.7, 1.45, 9.7], c: 3 },
+        { o: [-4.9, 8.7, -4.9], s: [9.8, 0.25, 9.8], c: 4 }, { o: [-1.3, 7.4, -5.1], s: [2.6, 1.15, 0.25], c: 4 },
+        { o: [-0.55, 7.7, -5.15], s: [1.1, 0.55, 0.25], c: 0 }, { o: [-4.55, 13.2, -4.55], s: [9.1, 0.25, 9.1], c: 5 }] }] },
+  ];
+  const ALL_COSM = [...SUNRISE_COSMETICS, ...MCR_COSMETICS];
+  const COSMETICS = ALL_COSM.map((d) => d.meta);   /* métadonnées (id, nom, catégorie…) */
+  const COSM_GROUPS = [
+    { id: "all", name: "Tout", cats: [] },
+    { id: "head", name: "Tête", cats: ["HAT", "HEADGEAR", "FACE"] },
+    { id: "body", name: "Corps", cats: ["BACK", "LANYARD", "TAIL", "AURA"] },
+    { id: "wings", name: "Ailes", cats: ["WING"] },
+    { id: "feet", name: "Pieds", cats: ["FEET"] },
+    { id: "pets", name: "Compagnons", cats: ["PETS"] },
+  ];
+  const geoCacheC = new Map();
+  function cosmItem(id) {
+    const def = ALL_COSM.find((d) => d.meta.id === id);
+    if (!def) return null;
+    let g = geoCacheC.get(id);
+    if (!g) { g = paletteGeo(def); geoCacheC.set(id, g); }
+    return { ...def.meta, geo: g.geo, texture: g.texture, colors: [] };
+  }
+  /* anciens identifiants (versions précédentes) */
+  const COSM_ALIASES = { tophat: "b_sunrise_tophat", sunrise_tophat: "b_sunrise_tophat" };
+
+  /* ---------- LabyMod : géométrie Bedrock → objets 3D (portage de MC-RENDER) ---------- */
+  const Laby = (() => {
+    const D2R = Math.PI / 180;
+    function boxUV(u, v, size, mirror) {
+      const w = Math.floor(size[0] + 1e-7), h = Math.floor(size[1] + 1e-7), d = Math.floor(size[2] + 1e-7);
+      const f = {
+        north: [u + d, v + d, u + d + w, v + d + h], east: [u, v + d, u + d, v + d + h],
+        south: [u + 2 * d + w, v + d, u + 2 * d + 2 * w, v + d + h], west: [u + d + w, v + d, u + 2 * d + w, v + d + h],
+        up: [u + d + w, v + d, u + d, v], down: [u + d + 2 * w, v, u + d + w, v + d],
+      };
+      if (mirror) { const e = f.east; f.east = f.west; f.west = e; for (const k in f) { const r = f[k]; f[k] = [r[2], r[1], r[0], r[3]]; } }
+      return f;
+    }
+    function corners(dir, f, t) {
+      switch (dir) {
+        case "south": return [[f[0], t[1], t[2]], [t[0], t[1], t[2]], [t[0], f[1], t[2]], [f[0], f[1], t[2]]];
+        case "north": return [[t[0], t[1], f[2]], [f[0], t[1], f[2]], [f[0], f[1], f[2]], [t[0], f[1], f[2]]];
+        case "east": return [[t[0], t[1], t[2]], [t[0], t[1], f[2]], [t[0], f[1], f[2]], [t[0], f[1], t[2]]];
+        case "west": return [[f[0], t[1], f[2]], [f[0], t[1], t[2]], [f[0], f[1], t[2]], [f[0], f[1], f[2]]];
+        case "up": return [[f[0], t[1], f[2]], [t[0], t[1], f[2]], [t[0], t[1], t[2]], [f[0], t[1], t[2]]];
+        case "down": return [[f[0], f[1], t[2]], [t[0], f[1], t[2]], [t[0], f[1], f[2]], [f[0], f[1], f[2]]];
       }
-      if (def.pivot) root.position.set(def.pivot[0], def.pivot[1], def.pivot[2]);
-      if (def.tilt) root.rotation.set(def.tilt[0] * Math.PI / 180, def.tilt[1] * Math.PI / 180, def.tilt[2] * Math.PI / 180);
+    }
+    /* constructeurs Three.js empruntés au skin (le bundle skinview3d n'exporte pas THREE) */
+    function kit(v) {
+      const inner = v.playerObject.skin.head.children.find((c) => c.geometry);
+      const Mesh = inner.constructor, Box = inner.geometry.constructor;
+      return {
+        Mesh, Obj: Object.getPrototypeOf(Mesh), Geo: Object.getPrototypeOf(Box),
+        Attr: inner.geometry.attributes.position.constructor, Mat: inner.material.constructor,
+        Tex: inner.material.map.constructor, map: inner.material.map,
+      };
+    }
+    /* attendre que le skin soit chargé (la texture du skin fournit le type Texture) */
+    async function skinReady(v) {
+      for (let i = 0; i < 100; i++) {
+        const inner = v.playerObject?.skin?.head?.children?.find((c) => c.geometry);
+        if (inner?.material?.map) return;
+        await new Promise((r) => setTimeout(r, 80));
+      }
+      throw new Error("skin pas encore chargé");
+    }
+    async function build(v, item) {
+      await skinReady(v);
+      const K = kit(v);
+      const geos = item.geo["minecraft:geometry"] || (item.geo.geometry ? [item.geo.geometry] : null);
+      let geo = Array.isArray(geos) ? geos[0] : null;
+      if (!geo) {
+        const k = Object.keys(item.geo).find((x) => x.startsWith("geometry."));
+        if (k) geo = { description: { texture_width: item.geo[k].texturewidth, texture_height: item.geo[k].textureheight }, bones: item.geo[k].bones };
+      }
+      if (!geo) throw new Error("géométrie introuvable");
+      const tw = geo.description?.texture_width ?? 64, th = geo.description?.texture_height ?? 64;
+      let tex = null;
+      if (item.texture) {
+        const img = await loadImg(item.texture);
+        const c = document.createElement("canvas"); c.width = img.width; c.height = Math.min(img.height, img.width * th / tw || img.height);
+        c.getContext("2d").drawImage(img, 0, 0);
+        tex = new K.Tex(c);
+        tex.magFilter = K.map.magFilter; tex.minFilter = K.map.minFilter; tex.generateMipmaps = false;
+        tex.flipY = K.map.flipY; tex.colorSpace = K.map.colorSpace; tex.needsUpdate = true;
+      }
+      const baseMat = new K.Mat({ map: tex, transparent: true, alphaTest: 0.1, side: 2 });
+      if (!tex) baseMat.color.set(0xd0d0d0);
+      const bones = geo.bones || [], groups = new Map(), roots = [];
+      for (const b of bones) {
+        const g = new K.Obj();
+        g.name = b.name || "";
+        const origin = b.pivot ? [-b.pivot[0], b.pivot[1], b.pivot[2]] : [0, 0, 0];
+        const r = b.rotation ? [-b.rotation[0], -b.rotation[1], b.rotation[2]] : [0, 0, 0];
+        g.userData = { origin, rot: r, parent: b.parent, mirror: !!b.mirror };
+        groups.set(b.name, g);
+        for (const c of b.cubes || []) {
+          const size = c.size || [0, 0, 0], o = c.origin || [0, 0, 0], inf = c.inflate || 0;
+          const from = [-(o[0] + size[0]), o[1], o[2]], to = [from[0] + size[0], from[1] + size[1], from[2] + size[2]];
+          const piv = c.pivot ? [-c.pivot[0], c.pivot[1], c.pivot[2]] : origin;
+          const rot = c.rotation ? [-c.rotation[0], -c.rotation[1], c.rotation[2]] : [0, 0, 0];
+          let faces;
+          if (Array.isArray(c.uv)) faces = boxUV(c.uv[0], c.uv[1], size, c.mirror ?? b.mirror);
+          else if (c.uv && typeof c.uv === "object") { faces = {}; for (const [dir, fd] of Object.entries(c.uv)) { const [u, vv] = fd.uv, [sw, sh] = fd.uv_size || [0, 0]; faces[dir] = [u, vv, u + sw, vv + sh]; } }
+          else faces = boxUV(0, 0, size, false);
+          const f = [from[0] - piv[0] - inf, from[1] - piv[1] - inf, from[2] - piv[2] - inf];
+          const t = [to[0] - piv[0] + inf, to[1] - piv[1] + inf, to[2] - piv[2] + inf];
+          const pos = [], uv = [], idx = [];
+          for (const dir of ["north", "south", "east", "west", "up", "down"]) {
+            const fr = faces[dir]; if (!fr) continue;
+            const q = corners(dir, f, t), base = pos.length / 3;
+            const U = [[fr[0], fr[1]], [fr[2], fr[1]], [fr[2], fr[3]], [fr[0], fr[3]]];
+            for (let i = 0; i < 4; i++) { pos.push(...q[i]); uv.push(U[i][0] / tw, 1 - U[i][1] / th); }
+            idx.push(base, base + 3, base + 1, base + 1, base + 3, base + 2);
+          }
+          if (!idx.length) continue;
+          const gg = new K.Geo();
+          gg.setAttribute("position", new K.Attr(new Float32Array(pos), 3));
+          gg.setAttribute("uv", new K.Attr(new Float32Array(uv), 2));
+          gg.setIndex(idx);
+          gg.computeVertexNormals();
+          let mat = baseMat;
+          if (/^glow/i.test(b.name || "")) { mat = baseMat.clone(); if (mat.emissive) { mat.emissive.set(0xffffff); mat.emissiveMap = tex; mat.emissiveIntensity = 1.2; } }
+          const m = new K.Mesh(gg, mat);
+          m.userData = { pivot: piv };
+          m.rotation.set(rot[0] * D2R, rot[1] * D2R, rot[2] * D2R, "ZYX");
+          g.add(m);
+        }
+      }
+      /* hiérarchie + positions relatives aux pivots parents */
+      for (const g of groups.values()) {
+        const pg = g.userData.parent && groups.get(g.userData.parent);
+        const po = pg ? pg.userData.origin : [0, 0, 0];
+        g.position.set(g.userData.origin[0] - po[0], g.userData.origin[1] - po[1], g.userData.origin[2] - po[2]);
+        g.rotation.set(g.userData.rot[0] * D2R, g.userData.rot[1] * D2R, g.userData.rot[2] * D2R, "ZYX");
+        for (const m of g.children) if (m.userData.pivot) { const p = m.userData.pivot, o = g.userData.origin; m.position.set(p[0] - o[0], p[1] - o[1], p[2] - o[2]); }
+        if (pg) pg.add(g); else roots.push(g);
+      }
+      /* couleurs : os color_N_* teintés */
+      if (item.colors?.length) {
+        for (const g of groups.values()) {
+          let p = g, ci = -1;
+          while (p && ci < 0) { const mm = /^color_(\d+)/.exec(p.name || ""); if (mm) ci = +mm[1]; p = p.parent; }
+          if (ci >= 0 && item.colors[ci]) for (const m of g.children) if (m.material) { m.material = m.material.clone(); m.material.color.set(item.colors[ci]); }
+        }
+      }
+      const turn = new K.Obj();
+      turn.rotation.y = Math.PI;               /* modèles Bedrock tournés vers -Z */
+      turn.scale.setScalar(item.scale || 1);
+      for (const r of roots) turn.add(r);
+      const root = new K.Obj();
+      root.name = "laby-" + item.id;
+      root.add(turn);
       return root;
     }
-    function refresh(v) {
-      const head = v?.playerObject?.skin?.head;
-      if (!head) return;
-      for (const c of [...head.children]) if (String(c.name).startsWith("cosm-")) head.remove(c);
-      const list = v.__cosmOverride || equipped;
-      /* un chapeau dépasse de la tête : on recule un peu la caméra */
-      if (v.__z0 === undefined) v.__z0 = v.zoom;
-      const hasHead = list.some((id) => COSMETICS.find((d) => d.id === id)?.slot === "head");
-      v.zoom = hasHead ? v.__z0 * 0.86 : v.__z0;
-      for (const id of list) {
-        const def = COSMETICS.find((d) => d.id === id);
-        if (def && def.slot === "head") { try { head.add(build(v, def)); } catch (e) { console.warn("cosmétique", e); } }
+    function joints(v, item) {
+      const s = v.playerObject.skin;
+      if (item.type === "SHOULDER_PET") return [[s.body, [-5, 6, 0]]];
+      if (item.type === "FLYING_PET") return [[s.body, [11, 12, 2]]];
+      switch (item.attachedTo) {
+        case "HEAD": return [[s.head, [0, 0, 0]]];
+        case "ARM": return /glove|hand|gant/i.test(item.name) && item.category === "ARMS" ? [[s.rightArm, [0, 2, 0]], [s.leftArm, [0, 2, 0]]] : [[s.rightArm, [0, 2, 0]]];
+        case "LEG": case "FEET": return [[s.rightLeg, [0, 0, 0]], [s.leftLeg, [0, 0, 0]]];
+        default: return [[s.body, [0, 6, 0]]];
       }
     }
-    function attach(v) { if (!v) return; viewers.add(v); refresh(v); document.body?.classList.toggle("cosm-head", equipped.some((id) => COSMETICS.find((d) => d.id === id)?.slot === "head")); }
+    async function attachAll(v, items, key = "__labyObjs") {
+      const gen = (v[key + "Gen"] = (v[key + "Gen"] || 0) + 1);
+      for (const o of v[key] || []) o.parent?.remove(o);
+      v[key] = [];
+      for (const it of items) {
+        for (const [joint, off] of joints(v, it)) {
+          try {
+            const obj = await build(v, it);
+            if (v[key + "Gen"] !== gen) return;       /* une mise à jour plus récente a pris le relais */
+            obj.position.set(off[0], off[1], off[2]);
+            joint.add(obj);
+            v[key].push(obj);
+          } catch (e) { console.warn("cosmétique", it.name, e); }
+        }
+      }
+    }
+    return { attachAll };
+  })();
+
+  const Cosmetics = (() => {
+    const KEY = "sunrise-cosmetics";
+    let equipped = (() => {
+      try { return JSON.parse(localStorage.getItem(KEY) || "[]").map((id) => COSM_ALIASES[id] || id).filter((id) => COSMETICS.some((d) => d.id === id)); }
+      catch { return []; }
+    })();
+    const viewers = new Set();
+    const headCats = ["HAT", "HEADGEAR"];
+    function hasHat(list) { return list.some((id) => headCats.includes(COSMETICS.find((d) => d.id === id)?.category)); }
+    function refresh(v) {
+      if (!v?.playerObject) return;
+      const list = (v.__cosmOverride || equipped).map((id) => COSM_ALIASES[id] || id);
+      /* un chapeau dépasse de la tête : on recule un peu la caméra */
+      if (v.__z0 === undefined) v.__z0 = v.zoom;
+      v.zoom = hasHat(list) ? v.__z0 * 0.86 : v.__z0;
+      Laby.attachAll(v, list.map(cosmItem).filter(Boolean), "__cosmObjs");
+    }
     function refreshAll() {
       for (const v of viewers) refresh(v);
-      document.body?.classList.toggle("cosm-head", equipped.some((id) => COSMETICS.find((d) => d.id === id)?.slot === "head"));
+      document.body?.classList.toggle("cosm-head", hasHat(equipped));
+    }
+    let labyItems = [], labyOn = (() => { try { return localStorage.getItem("sunrise-laby-cosm") !== "0"; } catch { return true; } })();
+    async function loadLaby() {
+      const A = api();
+      const uuid = typeof session !== "undefined" && session?.type === "msa" ? session.uuid : null;
+      if (!A?.labyWorn || !uuid) { labyItems = []; return { ok: false, reason: "msa" }; }
+      const r = await A.labyWorn(uuid);
+      labyItems = r?.ok ? r.items : [];
+      for (const v of viewers) if (!v.__cosmOverride) Laby.attachAll(v, labyOn ? labyItems : []);
+      return r;
+    }
+    function setLabyOn(on) {
+      labyOn = !!on;
+      try { localStorage.setItem("sunrise-laby-cosm", on ? "1" : "0"); } catch (_) {}
+      for (const v of viewers) if (!v.__cosmOverride) Laby.attachAll(v, labyOn ? labyItems : []);
+    }
+    function attach(v) {
+      if (!v) return;
+      viewers.add(v);
+      refresh(v);
+      if (!v.__cosmOverride && labyOn && labyItems.length) Laby.attachAll(v, labyItems);
+      document.body?.classList.toggle("cosm-head", hasHat(equipped));
     }
     function set(list) {
       equipped = [...new Set(list)].filter((id) => COSMETICS.some((d) => d.id === id));
@@ -729,26 +1031,74 @@
       refreshAll();
       publish();
     }
+    /* un seul cosmétique par catégorie (un chapeau, une paire d'ailes…) */
     function toggle(id) {
       const def = COSMETICS.find((d) => d.id === id);
       if (!def) return;
-      const sameSlot = equipped.filter((e) => COSMETICS.find((d) => d.id === e)?.slot === def.slot);
       if (equipped.includes(id)) set(equipped.filter((e) => e !== id));
-      else set([...equipped.filter((e) => !sameSlot.includes(e)), id]);
+      else set([...equipped.filter((e) => COSMETICS.find((d) => d.id === e)?.category !== def.category), id]);
     }
-    /* état visible par les autres joueurs SUNRISE (lu par le mod en jeu).
-       ntfy.sh : sans compte, comme le réseau d'amis ; republié au lancement. */
+    /* état visible par les autres joueurs SUNRISE (lu en jeu). ntfy.sh : sans compte. */
     async function publish() {
       try {
         const name = typeof session !== "undefined" ? session?.name : null;
         if (!name) return;
         await fetch("https://ntfy.sh/sunrise-cosm-" + encodeURIComponent(String(name).toLowerCase()), {
-          method: "POST", body: JSON.stringify({ v: 1, name, items: equipped, t: Date.now() }),
+          method: "POST", body: JSON.stringify({ v: 2, name, items: equipped, t: Date.now() }),
         });
-      } catch (_) { /* hors ligne : ce n'est pas bloquant */ }
+      } catch (_) { /* hors ligne : pas bloquant */ }
     }
-    return { attach, refresh, refreshAll, toggle, set, publish, get equipped() { return [...equipped]; } };
+    return { attach, refresh, refreshAll, toggle, set, publish, loadLaby, setLabyOn, get equipped() { return [...equipped]; }, get laby() { return labyItems; }, get labyOn() { return labyOn; } };
   })();
+
+  /* vignettes 3D des cosmétiques : un petit viewer hors écran, rendu une fois par cosmétique */
+  const CosmThumbs = (() => {
+    let v = null, ready = null;
+    const cache = new Map(), queue = [];
+    let busy = false;
+    function init() {
+      if (ready) return ready;
+      const canvas = document.createElement("canvas");
+      v = new skinview3d.SkinViewer({ canvas, width: 220, height: 220, preserveDrawingBuffer: true });
+      v.background = null; v.fov = 30; v.renderPaused = true;
+      if (v.controls) v.controls.enabled = false;
+      v.playerObject.cape.visible = false;
+      ready = v.loadSkin(typeof MODE !== "undefined" && MODE.skin ? MODE.skin : "steve.png").catch(() => v.loadSkin("steve.png")).catch(() => {});
+      return ready;
+    }
+    async function render(id) {
+      await init();
+      const item = cosmItem(id);
+      v.__cosmOverride = [id];
+      await Laby.attachAll(v, [item], "__cosmObjs");
+      const cat = item.category, s = v.playerObject.skin;
+      const head = ["HAT", "HEADGEAR", "FACE"].includes(cat), feet = cat === "FEET";
+      const ty = head ? 17 : feet ? -2 : 3, dist = head ? 40 : feet ? 34 : 64;
+      const back = ["WING", "BACK", "TAIL"].includes(cat);
+      const yaw = back ? Math.PI + 0.6 : -0.6;
+      v.controls.target.set(0, ty, 0);
+      v.camera.position.set(Math.sin(yaw) * dist, ty + 6, Math.cos(yaw) * dist);
+      v.camera.lookAt(0, ty, 0);
+      s.position.y = 0;
+      v.render();
+      return v.canvas.toDataURL("image/png");
+    }
+    function get(id) {
+      if (cache.has(id)) return Promise.resolve(cache.get(id));
+      return new Promise((ok) => { queue.push([id, ok]); pump(); });
+    }
+    async function pump() {
+      if (busy) return;
+      busy = true;
+      while (queue.length) {
+        const [id, ok] = queue.shift();
+        try { const url = cache.get(id) || await render(id); cache.set(id, url); ok(url); } catch { ok(null); }
+      }
+      busy = false;
+    }
+    return { get };
+  })();
+
 
   /* ================================================================
      5. BIBLIOTHÈQUE DE SKINS (page Skins & capes)
@@ -820,10 +1170,9 @@
         after = r.after || false;
         const fresh = r.skins.filter((s) => !seen.has(s.texture));
         fresh.forEach((s) => seen.add(s.texture));
-        /* on vérifie chaque texture AVANT de l'afficher : seulement des skins complets */
-        const ok = await validate(fresh, my);
+        /* chaque texture est vérifiée puis affichée dès qu'elle arrive (seulement les skins complets) */
+        await validate(fresh, my, (s) => { if (my === token) grid.insertBefore(card(s, s.name || (filter ? filter : "Skin"), s.texture, s.data, s.slim), loader); });
         if (my !== token) return;
-        for (const s of ok) grid.appendChild(card(s, s.name || (filter ? filter : "Skin"), s.texture, s.data, s.slim));
         if (!grid.querySelector(".lib-card") && !after) setNote(filter ? "Aucun skin complet pour « " + filter + " »." : "Aucun skin pour le moment.");
         /* remplir l'écran si la grille ne défile pas encore */
         if (after && grid.scrollHeight <= grid.clientHeight + 40) setTimeout(more, 50);
@@ -834,7 +1183,7 @@
         busy = false;
       }
     }
-    async function validate(list, my) {
+    async function validate(list, my, onOk) {
       const out = new Array(list.length).fill(null);
       let i = 0;
       const worker = async () => {
@@ -846,10 +1195,11 @@
             const img = await loadImg(r.data);
             if (!isFullSkin(img)) continue;
             out[k] = { ...s, data: r.data, slim: img.height === 64 && isSlimImage(img) };
+            onOk?.(out[k]);
           } catch (_) {}
         }
       };
-      await Promise.all(Array.from({ length: 6 }, worker));
+      await Promise.all(Array.from({ length: 12 }, worker));
       return out.filter(Boolean);
     }
     function card(s, label, texture, data = null, slim = null) {
@@ -858,6 +1208,10 @@
       el.className = "lib-card";
       el.innerHTML = `<div class="lib-thumb"><i class="lib-spin"></i></div><span>${esc(label)}</span>`;
       el._skin = { texture, data, slim, label };
+      if (data) {
+        loadImg(data).then((img) => { const th = el.querySelector(".lib-thumb"); th.innerHTML = ""; th.appendChild(frontRender(img, 5, el._skin.slim ?? null)); }).catch(() => {});
+        return el;
+      }
       const io = new IntersectionObserver(async (en) => {
         if (!en.some((x) => x.isIntersecting)) return;
         io.disconnect();
@@ -1043,12 +1397,11 @@
       const loader = document.createElement("div"); loader.className = "lib-loading"; loader.textContent = "Recherche de pièces…";
       grid.appendChild(loader);
       try {
-        const r = await fullSkinsPage(wardTerm, wardAfter, () => my === wardToken);
+        const r = await fullSkinsPage(wardTerm, wardAfter, () => my === wardToken, (it) => { if (my === wardToken) grid.insertBefore(wardTile(it), loader); });
         if (my !== wardToken) return;
         if (!r.ok) { loader.textContent = r.error || "Garde-robe indisponible."; wardAfter = false; return; }
         wardAfter = r.after;
         loader.remove();
-        for (const it of r.items) grid.appendChild(wardTile(it));
         if (!grid.querySelector(".creator-opt") && !wardAfter) grid.insertAdjacentHTML("beforeend", `<div class="lib-loading">Aucune pièce pour « ${esc(wardTerm)} ».</div>`);
         if (wardAfter && grid.scrollHeight <= grid.clientHeight + 40) setTimeout(wardMore, 50);
       } finally { loader.remove(); wardBusy = false; }
@@ -1127,28 +1480,57 @@
      7. PAGE COSMÉTIQUES
      ================================================================ */
   const CosmPage = (() => {
-    let viewer = null;
+    let viewer = null, labyState = "idle", labyErr = "", group = "all";
     function init() {
       const host = $("cosm-skin");
-      if (host && !viewer && host.clientWidth) viewer = makeViewer(host, { yaw: -32, zoom: 0.72 });
+      if (host && !viewer && host.clientWidth) viewer = makeViewer(host, { yaw: -32, zoom: 0.62 });
       if (viewer && typeof MODE !== "undefined" && MODE.skin && viewer.__skin !== MODE.skin) { viewer.loadSkin(MODE.skin).catch(() => {}); viewer.__skin = MODE.skin; }
       if (viewer && typeof MODE !== "undefined" && MODE.cape && viewer.__cape !== MODE.cape) { viewer.loadCape(MODE.cape).catch(() => {}); viewer.__cape = MODE.cape; }
+      if (isMsa() && labyState === "idle") {
+        labyState = "loading";
+        Cosmetics.loadLaby().then((r) => { labyState = "done"; labyErr = r && !r.ok && r.error ? r.error : ""; render(); }).catch(() => { labyState = "done"; render(); });
+      }
+      const tabs = $("cosm-tabs");
+      if (tabs && !tabs.dataset.ready) {
+        tabs.dataset.ready = "1";
+        tabs.innerHTML = COSM_GROUPS.map((g) => `<button type="button" class="mod-tab${g.id === group ? " cur" : ""}" data-g="${g.id}">${esc(g.name)}</button>`).join("");
+        tabs.addEventListener("click", (e) => { const b = e.target.closest("[data-g]"); if (!b) return; group = b.dataset.g; tabs.querySelectorAll("button").forEach((x) => x.classList.toggle("cur", x === b)); render(); });
+      }
       render();
     }
     function render() {
       const grid = $("cosm-grid");
       if (!grid) return;
       const eq = Cosmetics.equipped;
-      grid.innerHTML = COSMETICS.map((d) => `
-        <div class="cosm-card${eq.includes(d.id) ? " on" : ""}">
-          <div class="cosm-thumb"><img src="cosmetics/${d.id}.png" alt=""></div>
-          <div class="cosm-info"><b>${esc(d.name)}</b><small>${esc(d.desc)}</small><em>${d.slot === "head" ? "Tête" : "Dos"}</em></div>
-          <button type="button" class="${eq.includes(d.id) ? "btn-secondary" : "btn-primary"}" data-cosm="${d.id}">${eq.includes(d.id) ? "Retirer" : "Porter"}</button>
-        </div>`).join("") + `
-        <div class="cosm-card cosm-soon"><div class="cosm-thumb"><span>?</span></div>
-          <div class="cosm-info"><b>Bientôt</b><small>D'autres cosmétiques arrivent dans les prochaines mises à jour.</small></div></div>`;
-      grid.querySelectorAll("[data-cosm]").forEach((b) => b.addEventListener("click", () => { Cosmetics.toggle(b.dataset.cosm); render(); }));
+      const g = COSM_GROUPS.find((x) => x.id === group);
+      const list = COSMETICS.filter((d) => !g.cats.length || g.cats.includes(d.category));
+      grid.innerHTML = "";
+      for (const d of list) {
+        const on = eq.includes(d.id);
+        const el = document.createElement("div");
+        el.className = "cosm-card" + (on ? " on" : "");
+        el.innerHTML = `<div class="cosm-thumb"><i class="lib-spin"></i></div>
+          <div class="cosm-info"><b>${esc(d.name)}</b><em>${esc(CAT_FR[d.category] || "Cosmétique")}</em></div>
+          <button type="button" class="${on ? "btn-secondary" : "btn-primary"}">${on ? "Retirer" : "Porter"}</button>`;
+        el.querySelector("button").addEventListener("click", () => { Cosmetics.toggle(d.id); render(); });
+        CosmThumbs.get(d.id).then((url) => { const t = el.querySelector(".cosm-thumb"); if (url && t) t.innerHTML = `<img src="${url}" alt="">`; });
+        grid.appendChild(el);
+      }
+      /* cosmétiques LabyMod que tu possèdes */
+      const lab = document.createElement("div");
+      lab.className = "cosm-laby";
+      const items = Cosmetics.laby;
+      if (!isMsa()) lab.innerHTML = `<h3>Tes cosmétiques LabyMod</h3><p class="auth-note">Connecte-toi avec ton compte Microsoft pour afficher les cosmétiques LabyMod que tu possèdes.</p>`;
+      else if (labyState === "loading") lab.innerHTML = `<h3>Tes cosmétiques LabyMod</h3><p class="auth-note">Recherche de tes cosmétiques LabyMod…</p>`;
+      else if (!items.length) lab.innerHTML = `<h3>Tes cosmétiques LabyMod</h3><p class="auth-note">${esc(labyErr || "Ton compte ne porte aucun cosmétique LabyMod.")}</p>`;
+      else lab.innerHTML = `<div class="cosm-laby-head"><h3>Tes cosmétiques LabyMod <em>${items.length}</em></h3>
+          <label class="setting-pin"><span>Les afficher</span><input type="checkbox" class="pixel-chk" id="laby-on"${Cosmetics.labyOn ? " checked" : ""}></label></div>
+          <div class="cosm-laby-list">${items.map((it) => `<span class="cosm-chip">${esc(it.name)}</span>`).join("")}</div>
+          <p class="auth-note">Ceux que tu possèdes sur ton compte LabyMod, affichés sur ton skin dans le launcher.</p>`;
+      grid.prepend(lab);
+      lab.querySelector("#laby-on")?.addEventListener("change", (e) => Cosmetics.setLabyOn(e.target.checked));
     }
+    const CAT_FR = { HAT: "Chapeau", HEADGEAR: "Tête", FACE: "Visage", WING: "Ailes", BACK: "Dos", LANYARD: "Cou", TAIL: "Queue", AURA: "Aura", FEET: "Pieds", PETS: "Compagnon" };
     return { init };
   })();
 
