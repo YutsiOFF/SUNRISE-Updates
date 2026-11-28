@@ -1,0 +1,38 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>debug cosmétiques</title>
+<style>body{margin:0;background:#2b2c2e;color:#ddd;font:12px system-ui}#grid{display:flex;flex-wrap:wrap;gap:6px;padding:6px}.t{width:236px;background:#3a3b3c;padding:4px}.t img{width:116px;height:116px;background:#303132}.t b{display:block;font-size:11px;white-space:nowrap;overflow:hidden}#live{position:fixed;right:0;bottom:0;width:300px;height:340px;background:#1e1f20;border:2px solid #555}#log{padding:6px;color:#f99}</style></head><body>
+<div id="log"></div><div id="grid"></div><canvas id="live"></canvas>
+<script src="../assets/skin3d/skinview3d.bundle.js"></script>
+<script src="../assets/skin3d/skin-studio.js"></script>
+<script>
+const LABY="https://dl.labymod.net", q=new URLSearchParams(location.search);
+const log=(m)=>{document.getElementById('log').textContent+=m+'  |  ';};
+const toData=(blob)=>new Promise(r=>{const f=new FileReader();f.onload=()=>r(f.result);f.readAsDataURL(blob);});
+async function tex(dir,data){for(const u of [`${LABY}/textures/${dir}/${data}`,`${LABY}/cosmetics/${dir}/textures/${data}.png`]){try{const r=await fetch(u);if(!r.ok)continue;const b=await r.blob();const a=new Uint8Array(await b.slice(0,2).arrayBuffer());if(a[0]===0x89)return toData(new Blob([b],{type:'image/png'}));}catch(e){}}return null;}
+async function item(c){const def=c.default_data||[],opt=c.options||[];const geo=await fetch(`${LABY}/cosmetics/${c.id}/geo.json`).then(r=>r.json());
+ const td=def.find(d=>/^[0-9a-f-]{20,}$/i.test(d))||def[0];const texture=c.texture_directory&&td?await tex(c.texture_directory,td):null;
+ const colors=opt.map((o,i)=>o==='rgb'?(def[i]||''):null).filter(x=>x!==null).map(x=>'#'+String(x).replace('#',''));
+ const oi=opt.indexOf('offset');const offset=oi>=0&&def[oi]?String(def[oi]).split(';').map(Number):null;
+ return {id:String(c.id),name:c.name,category:c.category||'OTHER',attachedTo:c.attached_to||'BODY',type:c.type||'COSMETIC',scale:+(c.scale||1),hideCape:!!c.hide_cape,geo,texture,colors,position:c.position||null,mirror:c.mirror===undefined?null:!!c.mirror,frameRatio:c.frame_aspect_ratio||null,frameDelay:+(c.frame_animation_delay||0)||null,offset};}
+(async()=>{
+ const idx=await fetch(LABY+'/cosmetics/index.json').then(r=>r.json());
+ const all=Object.values(idx.cosmetics).filter(c=>!c.draft);
+ let ids=(q.get('ids')||'').split(',').filter(Boolean);
+ if(q.get('cat')) ids=all.filter(c=>(c.category||'null')===q.get('cat')).map(c=>String(c.id)).slice(+(q.get('from')||0),+(q.get('from')||0)+(+(q.get('n')||24)));
+ const cvs=document.createElement('canvas');
+ const v=new skinview3d.SkinViewer({canvas:cvs,width:232,height:232,preserveDrawingBuffer:true});v.background=null;v.fov=30;v.renderPaused=true;v.controls.enabled=false;v.playerObject.cape.visible=false;v.__noCape=true;
+ await v.loadSkin('../assets/skin3d/skin.png');
+ const live=new skinview3d.SkinViewer({canvas:document.getElementById('live'),width:300,height:340});live.background=null;live.fov=40;live.zoom=0.6;
+ await live.loadSkin('../assets/skin3d/skin.png'); live.__noCape=true; live.playerObject.cape.visible=false;
+ const grid=document.getElementById('grid');window.__items={};
+ for(const id of ids){const c=idx.cosmetics[id]||all.find(x=>String(x.id)===id);if(!c){log('?'+id);continue;}
+  let it;try{it=await item(c);}catch(e){log(id+': '+e);continue;}window.__items[id]=it;
+  const shots=[];
+  for(const yaw of [-0.6,Math.PI+0.6]){await SunriseCosmetics.__debugAttach(v,[it]);v.playerObject.skin.position.y=0;
+   const head=['HAT','HEADGEAR','FACE','HEAD'].includes(it.category)||it.attachedTo==='HEAD';const feet=it.attachedTo==='LEG';
+   const ty=head?6:feet?-18:-5,d=head?40:feet?36:72;v.camera.position.set(Math.sin(yaw)*d,ty+6,Math.cos(yaw)*d);v.camera.lookAt(0,ty,0);v.render();shots.push(v.canvas.toDataURL());}
+  const el=document.createElement('div');el.className='t';el.innerHTML=`<img src="${shots[0]}"><img src="${shots[1]}"><b>${c.id} · ${c.name} · ${c.category} · ${c.attached_to}</b>`;
+  el.onclick=()=>SunriseCosmetics.__debugAttach(live,[it]);grid.appendChild(el);}
+ if(ids[0]) SunriseCosmetics.__debugAttach(live,[window.__items[ids[0]]]);
+ document.title='OK '+ids.length;
+})().catch(e=>log('ERR '+e));
+</script></body></html>

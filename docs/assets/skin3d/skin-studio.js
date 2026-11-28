@@ -916,10 +916,13 @@
       if (item.texture) {
         const img = await loadImg(item.texture);
         /* hauteur d'une image : frame_aspect_ratio de LabyMod, sinon proportions de la géométrie */
+        /* une image = les proportions de la géométrie (texture_width × texture_height), quelle que soit
+           la résolution (×1, ×4…) ; les images suivantes sont empilées dessous. frame_aspect_ratio ne
+           sert qu'en secours : beaucoup de cosmétiques fixes l'ont à 1:1. */
         const fr = item.frameRatio;
-        frameH = fr && fr.width > 0 ? Math.round(img.width * fr.height / fr.width) : Math.round(img.width * th / tw) || img.height;
+        frameH = tw > 0 && th > 0 ? Math.round(img.width * th / tw) : (fr && fr.width > 0 ? Math.round(img.width * fr.height / fr.width) : img.height);
         if (!frameH || frameH > img.height) frameH = img.height;
-        frames = Math.max(1, Math.floor(img.height / frameH));
+        frames = Math.max(1, Math.floor(img.height / frameH + 0.01));
         frameCanvas = document.createElement("canvas"); frameCanvas.width = img.width; frameCanvas.height = frameH;
         frameCanvas.getContext("2d").drawImage(img, 0, 0, img.width, frameH, 0, 0, img.width, frameH);
         sheet = img;
@@ -997,6 +1000,7 @@
       }
       const turn = new K.Obj();
       turn.rotation.y = Math.PI;               /* modèles Bedrock tournés vers -Z */
+      if (Array.isArray(item.offset)) turn.position.set(-(item.offset[0] || 0), item.offset[1] || 0, -(item.offset[2] || 0));
       turn.scale.setScalar(item.scale || 1);
       for (const r of roots) turn.add(r);
       const root = new K.Obj();
@@ -1016,9 +1020,33 @@
         });
       }
       /* mouvements : ailes qui battent, queues qui balancent, compagnons qui flottent */
-      const wings = [...groups.values()].filter((g) => /wing/i.test(g.name) && !/^glow/i.test(g.name));
-      const tails = [...groups.values()].filter((g) => /tail|queue/i.test(g.name));
+      const all = [...groups.values()];
+      const spinners = all.filter((g) => /^rotation/i.test(g.name));
+      const physics = all.filter((g) => /^physics/i.test(g.name));
+      const wings = physics.length ? [] : all.filter((g) => /wing/i.test(g.name) && !/^glow/i.test(g.name) && !g.parent?.name?.match(/wing/i));
+      const tails = all.filter((g) => /tail|queue/i.test(g.name) && !/^physics/i.test(g.name));
       const isPet = /PET/.test(item.type || "") || item.category === "PETS";
+      for (const g of [...spinners, ...physics]) g.userData.r0 = g.rotation.clone();
+      if (spinners.length || physics.length) {
+        const seed = Math.random() * 6;
+        CosmAnim.add(root, (t) => {
+          for (const g of spinners) {
+            const sp = parseFloat((g.name.match(/^rotation_?(\d+(?:\.\d+)?)/i) || [])[1]) || 1;
+            g.rotation.y = g.userData.r0.y + t * Math.min(3, 0.6 * sp);
+          }
+          for (const g of physics) {
+            /* physics_<amplitude>_<axes>_<sens>_… : balancement doux au repos */
+            const m = g.name.match(/^physics_(\d+)_([xyz]+)?_?([pn]+)?/i) || [];
+            const amp = Math.min(40, parseFloat(m[1]) || 20) * Math.PI / 180 * 0.35;
+            const axes = (m[2] || "x").toLowerCase();
+            const side = /left|_l(\d|_|$)/i.test(g.name) ? 1 : /right|_r(\d|_|$)/i.test(g.name) ? -1 : 1;
+            const k = Math.sin(t * 2.0 + seed);
+            if (axes.includes("x")) g.rotation.x = g.userData.r0.x + amp * 0.5 * (k + 1) * 0.5;
+            if (axes.includes("y")) g.rotation.y = g.userData.r0.y + side * amp * k;
+            if (axes.includes("z")) g.rotation.z = g.userData.r0.z + side * amp * 0.6 * k;
+          }
+        });
+      }
       if (wings.length || tails.length || isPet) {
         for (const g of [...wings, ...tails]) g.userData.r0 = g.rotation.clone();
         const y0 = root.position.y, seed = Math.random() * 6;
@@ -1758,4 +1786,5 @@
   }
   window.SunriseStudio = { onPage, generateSkin, frontRender, applySkin, DEFAULT_LOOK, COSMETICS };
   window.SunriseCosmetics = Cosmetics;
+  window.SunriseCosmetics.__debugAttach = (v, items) => Laby.attachAll(v, items, "__dbgObjs");
 })();
