@@ -998,6 +998,16 @@
           if (ci >= 0 && item.colors[ci]) for (const m of g.children) if (m.material) { m.material = m.material.clone(); m.material.color.set(item.colors[ci]); }
         }
       }
+      /* LabyMod : un calque « layer_<id de texture> » par variante de texture (géométrie dupliquée).
+         On ne garde que le calque de la texture choisie, sinon les faces identiques se superposent
+         et clignotent (z-fighting). */
+      const tid = String(item.texId || "").replace(/-/g, "").toLowerCase();
+      const layers = roots.filter((r) => /^layer_[0-9a-f]{32}$/i.test(r.name));
+      if (layers.length > 1) {
+        let keep = layers.filter((r) => r.name.slice(6).toLowerCase() === tid);
+        if (!keep.length) keep = [layers[0]];
+        for (const r of layers) if (!keep.includes(r)) roots.splice(roots.indexOf(r), 1);
+      }
       const turn = new K.Obj();
       turn.rotation.y = Math.PI;               /* modèles Bedrock tournés vers -Z */
       if (Array.isArray(item.offset)) turn.position.set(-(item.offset[0] || 0), item.offset[1] || 0, -(item.offset[2] || 0));
@@ -1036,9 +1046,11 @@
           }
           for (const g of physics) {
             /* physics_<amplitude>_<axes>_<sens>_… : balancement doux au repos */
-            const m = g.name.match(/^physics_(\d+)_([xyz]+)?_?([pn]+)?/i) || [];
-            const amp = Math.min(40, parseFloat(m[1]) || 20) * Math.PI / 180 * 0.35;
-            const axes = (m[2] || "x").toLowerCase();
+            const m = g.name.match(/^physics_(\d+)_([a-z]+)?/i) || [];
+            const amp = Math.min(40, parseFloat(m[1]) || 20) * Math.PI / 180 * 0.14;
+            const code = (m[2] || "x").toLowerCase();
+            /* « xz » = axes ; « nng », « fnn »… = un caractère par axe x/y/z (n/p mobile, f/g fixe) */
+            const axes = /^[xyz]+$/.test(code) ? code : ["x", "y", "z"].filter((a, i) => /[np]/.test(code[i] || "")).join("") || "x";
             const side = /left|_l(\d|_|$)/i.test(g.name) ? 1 : /right|_r(\d|_|$)/i.test(g.name) ? -1 : 1;
             const k = Math.sin(t * 2.0 + seed);
             if (axes.includes("x")) g.rotation.x = g.userData.r0.x + amp * 0.5 * (k + 1) * 0.5;

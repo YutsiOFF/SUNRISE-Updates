@@ -12,7 +12,7 @@ async function item(c){const def=c.default_data||[],opt=c.options||[];const geo=
  const td=def.find(d=>/^[0-9a-f-]{20,}$/i.test(d))||def[0];const texture=c.texture_directory&&td?await tex(c.texture_directory,td):null;
  const colors=opt.map((o,i)=>o==='rgb'?(def[i]||''):null).filter(x=>x!==null).map(x=>'#'+String(x).replace('#',''));
  const oi=opt.indexOf('offset');const offset=oi>=0&&def[oi]?String(def[oi]).split(';').map(Number):null;
- return {id:String(c.id),name:c.name,category:c.category||'OTHER',attachedTo:c.attached_to||'BODY',type:c.type||'COSMETIC',scale:+(c.scale||1),hideCape:!!c.hide_cape,geo,texture,colors,position:c.position||null,mirror:c.mirror===undefined?null:!!c.mirror,frameRatio:c.frame_aspect_ratio||null,frameDelay:+(c.frame_animation_delay||0)||null,offset};}
+ return {id:String(c.id),name:c.name,category:c.category||'OTHER',attachedTo:c.attached_to||'BODY',type:c.type||'COSMETIC',scale:+(c.scale||1),hideCape:!!c.hide_cape,geo,texture,colors,position:c.position||null,mirror:c.mirror===undefined?null:!!c.mirror,frameRatio:c.frame_aspect_ratio||null,frameDelay:+(c.frame_animation_delay||0)||null,offset,texId:td||null};}
 (async()=>{
  const idx=await fetch(LABY+'/cosmetics/index.json').then(r=>r.json());
  const all=Object.values(idx.cosmetics).filter(c=>!c.draft);
@@ -29,7 +29,7 @@ async function item(c){const def=c.default_data||[],opt=c.options||[];const geo=
   const shots=[];
   for(const yaw of [-0.6,Math.PI+0.6]){await SunriseCosmetics.__debugAttach(v,[it]);v.playerObject.skin.position.y=0;
    const head=['HAT','HEADGEAR','FACE','HEAD'].includes(it.category)||it.attachedTo==='HEAD';const feet=it.attachedTo==='LEG';
-   const ty=head?6:feet?-18:-5,d=head?40:feet?36:72;v.camera.position.set(Math.sin(yaw)*d,ty+6,Math.cos(yaw)*d);v.camera.lookAt(0,ty,0);v.render();shots.push(v.canvas.toDataURL());}
+   const ty=head?6:feet?-21:-5,d=head?40:feet?26:72;v.camera.position.set(Math.sin(yaw)*d,ty+6,Math.cos(yaw)*d);v.camera.lookAt(0,ty,0);v.render();shots.push(v.canvas.toDataURL());}
   const el=document.createElement('div');el.className='t';el.innerHTML=`<img src="${shots[0]}"><img src="${shots[1]}"><b>${c.id} · ${c.name} · ${c.category} · ${c.attached_to}</b>`;
   el.onclick=()=>SunriseCosmetics.__debugAttach(live,[it]);grid.appendChild(el);}
  if(ids[0]) SunriseCosmetics.__debugAttach(live,[window.__items[ids[0]]]);
