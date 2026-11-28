@@ -1032,7 +1032,8 @@
       }
       /* mouvements : ailes qui battent, queues qui balancent, compagnons qui flottent */
       const all = [...groups.values()];
-      const spinners = all.filter((g) => /^rotation/i.test(g.name));
+      /* « rotationN » est souvent un simple pivot dans les modèles LabyMod : pas de rotation continue */
+      const spinners = [];
       const physics = all.filter((g) => /^physics/i.test(g.name));
       const wings = physics.length ? [] : all.filter((g) => /wing/i.test(g.name) && !/^glow/i.test(g.name) && !g.parent?.name?.match(/wing/i));
       const tails = all.filter((g) => /tail|queue/i.test(g.name) && !/^physics/i.test(g.name));
