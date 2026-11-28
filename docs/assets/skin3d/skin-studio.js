@@ -1036,8 +1036,14 @@
       }
       /* mouvements : ailes qui battent, queues qui balancent, compagnons qui flottent */
       const all = [...groups.values()];
-      /* « rotationN » est souvent un simple pivot dans les modèles LabyMod : pas de rotation continue */
-      const spinners = [];
+      /* « rotationN » n'est qu'un pivot dans la plupart des modèles (ailes…) : on ne fait tourner que
+         les auras / lueurs au sol, qui orbitent autour du joueur comme dans LabyMod */
+      const isAura = ["AURA", "UNDERGLOW"].includes(String(item.category || "").toUpperCase());
+      const spinners = isAura ? all.filter((g) => /spin|rotat/i.test(g.name)) : [];
+      if (isAura) {
+        const seedA = Math.random() * 6;
+        CosmAnim.add(root, (t) => { turn.rotation.y = Math.PI + t * 0.5 + seedA; });
+      }
       const physics = all.filter((g) => /^physics/i.test(g.name));
       const wings = physics.length ? [] : all.filter((g) => /wing/i.test(g.name) && !/^glow/i.test(g.name) && !g.parent?.name?.match(/wing/i));
       const tails = all.filter((g) => /tail|queue/i.test(g.name) && !/^physics/i.test(g.name));
@@ -1047,8 +1053,7 @@
         const seed = Math.random() * 6;
         CosmAnim.add(root, (t) => {
           for (const g of spinners) {
-            const sp = parseFloat((g.name.match(/^rotation_?(\d+(?:\.\d+)?)/i) || [])[1]) || 1;
-            g.rotation.y = g.userData.r0.y + t * Math.min(3, 0.6 * sp);
+            g.rotation.y = g.userData.r0.y + t * 1.1;
           }
           for (const g of physics) {
             /* physics_<amplitude>_<axes>_<sens>_… : balancement doux au repos */
