@@ -993,7 +993,24 @@
       /* effet « pochoir » LabyMod : un grand fond visible seulement à travers la forme du premier
          plan (capes « hacker », portails…). Sans pochoir, on masque le fond. */
       const bgs = [...groups.values()].filter((g) => /background/i.test(g.name));
-      if (bgs.length && [...groups.values()].some((g) => /foreground/i.test(g.name))) for (const g of bgs) g.visible = false;
+      const fgs = [...groups.values()].filter((g) => /foreground/i.test(g.name));
+      if (bgs.length && fgs.length) {
+        /* masque invisible à la forme du premier plan, puis fond dessiné seulement dans le masque */
+        const ref = 1 + Math.floor(Math.random() * 200);
+        const maskMat = new K.Mat({ colorWrite: false, depthWrite: false });
+        Object.assign(maskMat, { stencilWrite: true, stencilRef: ref, stencilFunc: 519, stencilZPass: 7681, stencilFail: 7680, stencilZFail: 7680 });
+        for (const g of fgs) for (const m of [...g.children]) if (m.geometry) {
+          const mask = new K.Mesh(m.geometry, maskMat);
+          mask.position.copy(m.position); mask.rotation.copy(m.rotation); mask.scale.copy(m.scale);
+          mask.renderOrder = 10; g.add(mask);
+          m.renderOrder = 12;
+        }
+        for (const g of bgs) for (const m of g.children) if (m.material) {
+          m.material = m.material.clone();
+          Object.assign(m.material, { stencilWrite: true, stencilRef: ref, stencilFunc: 514, stencilZPass: 7680, stencilFail: 7680, stencilZFail: 7680, depthTest: false });
+          m.renderOrder = 11;
+        }
+      }
       /* couleurs : os color_N_* teintés */
       if (item.colors?.length) {
         for (const g of groups.values()) {
