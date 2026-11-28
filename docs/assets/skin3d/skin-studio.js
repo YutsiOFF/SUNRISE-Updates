@@ -932,7 +932,41 @@
       }
       const baseMat = new K.Mat({ map: tex, transparent: true, alphaTest: 0.1, side: 2 });
       if (!tex) baseMat.color.set(0xd0d0d0);
-      const bones = geo.bones || [], groups = new Map(), roots = [];
+      let bones = geo.bones || [];
+      /* effet « pochoir » LabyMod (capes « hacker », portails…) : un grand fond n'est visible qu'à
+         travers la forme du premier plan. On découpe le fond à la forme du premier plan. */
+      {
+        const fgCubes = bones.filter((b) => /foreground/i.test(b.name)).flatMap((b) => b.cubes || []);
+        if (fgCubes.length && bones.some((b) => /background/i.test(b.name))) {
+          const fx1 = Math.min(...fgCubes.map((c) => c.origin[0])), fx2 = Math.max(...fgCubes.map((c) => c.origin[0] + c.size[0]));
+          const fy1 = Math.min(...fgCubes.map((c) => c.origin[1])), fy2 = Math.max(...fgCubes.map((c) => c.origin[1] + c.size[1]));
+          bones = bones.map((b) => {
+            if (!/background/i.test(b.name)) return b;
+            const cubes = [];
+            for (const c of b.cubes || []) {
+              const [ox, oy, oz] = c.origin, [sx, sy, sz] = c.size;
+              const x1 = Math.max(ox, fx1), x2 = Math.min(ox + sx, fx2), y1 = Math.max(oy, fy1), y2 = Math.min(oy + sy, fy2);
+              if (x2 - x1 <= 0 || y2 - y1 <= 0) continue;
+              /* UV de la face avant/arrière d'origine, réduite au morceau gardé */
+              const full = Array.isArray(c.uv) ? boxUV(c.uv[0], c.uv[1], c.size, c.mirror ?? b.mirror) : null;
+              const uvOf = (dir) => {
+                if (full) { const [u1, v1, u2, v2] = full[dir]; return [u1, v1, u2 - u1, v2 - v1]; }
+                const f = c.uv?.[dir]; return f ? [f.uv[0], f.uv[1], (f.uv_size || [0, 0])[0], (f.uv_size || [0, 0])[1]] : null;
+              };
+              const uv = {};
+              for (const dir of ["north", "south"]) {
+                const r = uvOf(dir); if (!r) continue;
+                const [u, v, w, h] = r;
+                const a1 = (x1 - ox) / sx, a2 = (x2 - ox) / sx, b1 = (oy + sy - y2) / sy, b2 = (oy + sy - y1) / sy;
+                uv[dir] = { uv: [u + w * a1, v + h * b1], uv_size: [w * (a2 - a1), h * (b2 - b1)] };
+              }
+              cubes.push({ ...c, origin: [x1, y1, oz + sz * 0.5], size: [x2 - x1, y2 - y1, 0.001], uv });
+            }
+            return { ...b, cubes };
+          });
+        }
+      }
+      const groups = new Map(), roots = [];
       for (const b of bones) {
         const g = new K.Obj();
         g.name = b.name || "";
@@ -989,27 +1023,6 @@
         g.rotation.set(g.userData.rot[0] * D2R, g.userData.rot[1] * D2R, g.userData.rot[2] * D2R, "ZYX");
         for (const m of g.children) if (m.userData.pivot) { const p = m.userData.pivot, o = g.userData.origin; m.position.set(p[0] - o[0], p[1] - o[1], p[2] - o[2]); }
         if (pg) pg.add(g); else roots.push(g);
-      }
-      /* effet « pochoir » LabyMod : un grand fond visible seulement à travers la forme du premier
-         plan (capes « hacker », portails…). Sans pochoir, on masque le fond. */
-      const bgs = [...groups.values()].filter((g) => /background/i.test(g.name));
-      const fgs = [...groups.values()].filter((g) => /foreground/i.test(g.name));
-      if (bgs.length && fgs.length) {
-        /* masque invisible à la forme du premier plan, puis fond dessiné seulement dans le masque */
-        const ref = 1 + Math.floor(Math.random() * 200);
-        const maskMat = new K.Mat({ colorWrite: false, depthWrite: false });
-        Object.assign(maskMat, { stencilWrite: true, stencilRef: ref, stencilFunc: 519, stencilZPass: 7681, stencilFail: 7680, stencilZFail: 7680 });
-        for (const g of fgs) for (const m of [...g.children]) if (m.geometry) {
-          const mask = new K.Mesh(m.geometry, maskMat);
-          mask.position.copy(m.position); mask.rotation.copy(m.rotation); mask.scale.copy(m.scale);
-          mask.renderOrder = 10; g.add(mask);
-          m.renderOrder = 12;
-        }
-        for (const g of bgs) for (const m of g.children) if (m.material) {
-          m.material = m.material.clone();
-          Object.assign(m.material, { stencilWrite: true, stencilRef: ref, stencilFunc: 514, stencilZPass: 7680, stencilFail: 7680, stencilZFail: 7680, depthTest: false });
-          m.renderOrder = 11;
-        }
       }
       /* couleurs : os color_N_* teintés */
       if (item.colors?.length) {
