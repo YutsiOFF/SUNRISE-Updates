@@ -1002,9 +1002,10 @@
          On ne garde que le calque de la texture choisie, sinon les faces identiques se superposent
          et clignotent (z-fighting). */
       const tid = String(item.texId || "").replace(/-/g, "").toLowerCase();
-      const layers = roots.filter((r) => /^layer_[0-9a-f]{32}$/i.test(r.name));
+      const layerId = (r) => (r.name.match(/^layer_([0-9a-f]{32})/i) || [])[1]?.toLowerCase();
+      const layers = roots.filter((r) => layerId(r));
       if (layers.length > 1) {
-        let keep = layers.filter((r) => r.name.slice(6).toLowerCase() === tid);
+        let keep = layers.filter((r) => layerId(r) === tid);
         if (!keep.length) keep = [layers[0]];
         for (const r of layers) if (!keep.includes(r)) roots.splice(roots.indexOf(r), 1);
       }
