@@ -990,6 +990,10 @@
         for (const m of g.children) if (m.userData.pivot) { const p = m.userData.pivot, o = g.userData.origin; m.position.set(p[0] - o[0], p[1] - o[1], p[2] - o[2]); }
         if (pg) pg.add(g); else roots.push(g);
       }
+      /* effet « pochoir » LabyMod : un grand fond visible seulement à travers la forme du premier
+         plan (capes « hacker », portails…). Sans pochoir, on masque le fond. */
+      const bgs = [...groups.values()].filter((g) => /background/i.test(g.name));
+      if (bgs.length && [...groups.values()].some((g) => /foreground/i.test(g.name))) for (const g of bgs) g.visible = false;
       /* couleurs : os color_N_* teintés */
       if (item.colors?.length) {
         for (const g of groups.values()) {

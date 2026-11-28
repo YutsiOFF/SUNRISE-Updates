@@ -2,7 +2,7 @@
 <style>body{margin:0;background:#2b2c2e;color:#ddd;font:12px system-ui}#grid{display:flex;flex-wrap:wrap;gap:6px;padding:6px}.t{width:236px;background:#3a3b3c;padding:4px}.t img{width:116px;height:116px;background:#303132}.t b{display:block;font-size:11px;white-space:nowrap;overflow:hidden}#live{position:fixed;right:0;bottom:0;width:300px;height:340px;background:#1e1f20;border:2px solid #555}#log{padding:6px;color:#f99}</style></head><body>
 <div id="log"></div><div id="grid"></div><canvas id="live"></canvas>
 <script src="../assets/skin3d/skinview3d.bundle.js"></script>
-<script src="../assets/skin3d/skin-studio.js"></script>
+<script>document.write(`<script src="../assets/skin3d/skin-studio.js?t=${Date.now()}"><\/script>`)</script>
 <script>
 const LABY="https://dl.labymod.net", q=new URLSearchParams(location.search);
 const log=(m)=>{document.getElementById('log').textContent+=m+'  |  ';};
